@@ -1,0 +1,198 @@
+'use server'
+
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { ServerActionResponse, GeminiResponse } from '@/types/vocab'
+
+const genAI = (() => {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    return null
+  }
+  return new GoogleGenerativeAI(apiKey)
+})()
+
+const VOCAB_PROMPT_TEMPLATE = (englishTerm: string) => `
+You are an expert German language instructor specializing in business terminology.
+Your task is to provide German translations with grammatical details for the following English term, with a focus on CORPORATE/BUSINESS/OFFICE contexts.
+
+English Term: "${englishTerm}"
+
+IMPORTANT REQUIREMENTS:
+1. Return ONLY valid JSON, no markdown, no code blocks, no explanations
+2. The article must be one of: "der", "die", "das", or "none" (for verbs/adjectives/adverbs)
+3. Provide the plural form in German (nominative case)
+4. The example sentence MUST be in a business context (meetings, projects, emails, ERP systems, offices, teamwork, deadlines)
+5. The example sentence must contain the German term and be natural, professional German
+6. Provide an English translation of the example sentence
+
+Return JSON in this exact format:
+{
+  "germanTerm": "German translation of the term",
+  "article": "der|die|das|none",
+  "plural": "plural form in German (or same as singular if no plural)",
+  "exampleSentence": "A professional business context sentence in German using the term",
+  "englishSentence": "English translation of the example sentence"
+}
+
+If the term cannot be translated or is invalid, return:
+{
+  "germanTerm": "untranslatable",
+  "article": "none",
+  "plural": "N/A",
+  "exampleSentence": "Invalid or untranslatable term",
+  "englishSentence": "N/A"
+}
+}
+`
+
+async function callGeminiAPI(
+  englishTerm: string
+): Promise<GeminiResponse> {
+  if (!genAI) {
+    console.error('Gemini API key not configured')
+    return {
+      germanTerm: 'error',
+      article: 'none',
+      plural: 'N/A',
+      exampleSentence: 'Gemini API not configured',
+      englishSentence: 'Error',
+    }
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+    const prompt = VOCAB_PROMPT_TEMPLATE(englishTerm)
+
+    const result = await model.generateContent(prompt)
+    const responseText = result.response.text()
+
+    const jsonMatch = responseText.match(/\{[\s\S]*?\}/)
+    if (!jsonMatch) {
+      console.error('No JSON found in response:', responseText)
+      return {
+        germanTerm: 'error',
+        article: 'none',
+        plural: 'N/A',
+        exampleSentence: 'Failed to parse Gemini response',
+        englishSentence: 'Error',
+      }
+    }
+
+    const cleanedJson = jsonMatch[0]
+    const parsedResponse: GeminiResponse = JSON.parse(cleanedJson)
+
+    // Validation layer
+    if (!parsedResponse.germanTerm) {
+      return {
+        germanTerm: 'invalid',
+        article: 'none',
+        plural: 'N/A',
+        exampleSentence: 'Invalid response from Gemini',
+        englishSentence: 'Error',
+      }
+    }
+
+    // Ensure article is valid
+    const validArticles: Array<'der' | 'die' | 'das' | 'none'> = [
+      'der',
+      'die',
+      'das',
+      'none',
+    ]
+    if (!validArticles.includes(parsedResponse.article)) {
+      parsedResponse.article = 'none'
+    }
+
+    // Ensure englishSentence exists (fallback for older prompt versions compatibility)
+    if (!parsedResponse.englishSentence) {
+      parsedResponse.englishSentence = "Translation unavailable"
+    }
+
+    return parsedResponse
+  } catch (error) {
+    console.error('Gemini API Error:', error)
+    throw new Error(`Failed to call Gemini API: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+export async function generateVocabData(
+  englishTerm: string
+): Promise<ServerActionResponse> {
+  // Input validation
+  if (!englishTerm || typeof englishTerm !== 'string') {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_INPUT',
+        message: 'English term must be a non-empty string',
+      },
+    }
+  }
+
+  const trimmedTerm = englishTerm.trim()
+  if (trimmedTerm.length < 2 || trimmedTerm.length > 100) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_TERM_LENGTH',
+        message: 'English term must be between 2 and 100 characters',
+      },
+    }
+  }
+
+  // Sanitize input (remove special characters)
+  const sanitizedTerm = trimmedTerm.replace(/[^a-zA-Z\s\-]/g, '')
+  if (sanitizedTerm.length === 0) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_CHARACTERS',
+        message: 'English term contains invalid characters',
+      },
+    }
+  }
+
+  try {
+    const geminiData = await callGeminiAPI(sanitizedTerm)
+
+    // Check for Gemini API errors
+    if (
+      geminiData.germanTerm === 'error' ||
+      geminiData.germanTerm === 'invalid' ||
+      geminiData.germanTerm === 'untranslatable'
+    ) {
+      return {
+        success: false,
+        error: {
+          code: 'GEMINI_ERROR',
+          message: `Could not translate "${englishTerm}". Please try another term.`,
+        },
+      }
+    }
+
+    const vocabData = {
+      originalTerm: sanitizedTerm,
+      germanTerm: geminiData.germanTerm,
+      article: geminiData.article,
+      plural: geminiData.plural,
+      exampleSentence: geminiData.exampleSentence,
+      englishSentence: geminiData.englishSentence, // <--- Add to response
+      category: 'work' as const,
+    }
+
+    return {
+      success: true,
+      data: vocabData,
+    }
+  } catch (error) {
+    console.error('Server Action Error:', error)
+    return {
+      success: false,
+      error: {
+        code: 'SERVER_ERROR',
+        message: 'Failed to generate vocab data. Please try again.',
+      },
+    }
+  }
+}
