@@ -424,7 +424,7 @@ export function VocabList() {
                     >
                       <div className="flex items-start justify-between pointer-events-none">
                          <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4">
-                           "{card.exampleSentence}"
+                           &quot;{card.exampleSentence}&quot;
                          </p>
                          <Info className="w-3 h-3 text-muted-foreground/30 ml-2 mt-1 flex-shrink-0" />
                       </div>
