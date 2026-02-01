@@ -80,6 +80,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {/* 1. Real Image instead of Emoji (Guaranteed to work on Windows) */}
             <div className="relative h-12 w-12 shadow-sm rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-700">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
                 src="https://flagcdn.com/de.svg" 
                 alt="German Flag" 

@@ -6,47 +6,18 @@
 // ============================================
 
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
-import { useState } from 'react'
 
 export function AdvancedVocabForm() {
-  const [customError, setCustomError] = useState('')
   const {
     isGenerating,
     isSaving,
-    error,
-    generateData,
-    saveToFirestore,
-    resetState,
   } = useVocabGenerator()
-
-  const handleCustomGenerate = async (term: string) => {
-    setCustomError('')
-
-    // Custom validation
-    if (term.length < 2) {
-      setCustomError('Term must be at least 2 characters')
-      return
-    }
-
-    if (term.length > 50) {
-      setCustomError('Term must be less than 50 characters')
-      return
-    }
-
-    // Call generation
-    const data = await generateData(term)
-
-    if (!data) {
-      setCustomError(error || 'Unknown error')
-    }
-  }
 
   return (
     <div>
       {/* Custom UI based on granular states */}
       {isGenerating && <p>🔄 Asking Gemini...</p>}
       {isSaving && <p>💾 Saving to Firestore...</p>}
-      {customError && <p className="text-red-600">❌ {customError}</p>}
     </div>
   )
 }
