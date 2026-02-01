@@ -14,7 +14,6 @@ export function AdvancedVocabForm() {
     isGenerating,
     isSaving,
     error,
-    generatedData,
     generateData,
     saveToFirestore,
     resetState,
