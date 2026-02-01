@@ -2,11 +2,10 @@
 
 import { useState, useCallback } from 'react'
 import {
-  collection,
   setDoc,
   doc,
   getDoc,
-  updateDoc, // <--- Added updateDoc
+  updateDoc,
   Timestamp,
 } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
@@ -72,7 +71,7 @@ export function useVocabGenerator() {
         setState((prev) => ({
           ...prev,
           isGenerating: false,
-          generatedData: response.data,
+          generatedData: response.data || null, // Ensure compatibility with VocabCardInput | null
         }))
 
         return response.data
