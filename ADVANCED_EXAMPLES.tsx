@@ -1,11 +1,16 @@
 // ADVANCED USAGE EXAMPLES FOR DEINCONTEXT
 // These examples show advanced patterns and customizations
 
+import { useVocabGenerator } from '@/hooks/useVocabGenerator'
+import { generateVocabData } from '@/app/actions/generateVocab'
+import { collection, addDoc, Timestamp, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
+import { db } from '@/lib/firebase'
+import { VocabCard } from '@/types/vocab'
+
 // ============================================
 // 1. USING useVocabGenerator WITH CUSTOM UI
 // ============================================
-
-import { useVocabGenerator } from '@/hooks/useVocabGenerator'
 
 export function AdvancedVocabForm() {
   const {
@@ -25,11 +30,6 @@ export function AdvancedVocabForm() {
 // ============================================
 // 2. BATCH PROCESSING MULTIPLE TERMS
 // ============================================
-
-import { generateVocabData } from '@/app/actions/generateVocab'
-import { collection, addDoc, Timestamp } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
-import { db } from '@/lib/firebase'
 
 export async function batchGenerateVocab(
   terms: string[],
@@ -97,15 +97,6 @@ export async function batchGenerateVocab(
 // ============================================
 // 3. FILTERING AND SEARCHING VOCAB
 // ============================================
-
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit,
-} from 'firebase/firestore'
 
 export async function searchVocab(
   userId: string,
@@ -187,8 +178,6 @@ export function exportVocabToCSV(
 // ============================================
 // 5. SPACED REPETITION ALGORITHM
 // ============================================
-
-import { Timestamp } from 'firebase/firestore'
 
 interface ReviewCard extends VocabCard {
   id: string
