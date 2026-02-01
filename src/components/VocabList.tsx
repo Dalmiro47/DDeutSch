@@ -76,6 +76,7 @@ export function VocabList() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
       setIsLoading(false)
+      return
     }
   }, [])
 
