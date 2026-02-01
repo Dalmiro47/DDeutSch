@@ -1,3 +1,6 @@
+# Advanced Usage Examples
+
+```tsx
 // ADVANCED USAGE EXAMPLES FOR DEINCONTEXT
 // These examples show advanced patterns and customizations
 
@@ -304,3 +307,5 @@ export async function getUserVocabStats(userId: string) {
 // ============================================
 // END ADVANCED EXAMPLES
 // ============================================
+
+```
