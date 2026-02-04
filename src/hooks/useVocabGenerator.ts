@@ -11,7 +11,7 @@ import {
 import { getAuth } from 'firebase/auth'
 import { db } from '@/lib/firebase'
 import { generateVocabData } from '@/app/actions/generateVocab'
-import { VocabCard, VocabCardInput } from '@/types/vocab'
+import { VocabCard, VocabCardInput, CefrLevel } from '@/types/vocab'
 
 interface UseVocabGeneratorState {
   isLoading: boolean
@@ -44,7 +44,7 @@ export function useVocabGenerator() {
   }, [])
 
   const generateData = useCallback(
-    async (englishTerm: string): Promise<VocabCardInput | null> => {
+    async (englishTerm: string, cefrLevel: CefrLevel): Promise<VocabCardInput | null> => {
       setState((prev) => ({
         ...prev,
         isLoading: true,
@@ -54,7 +54,7 @@ export function useVocabGenerator() {
       }))
 
       try {
-        const response = await generateVocabData(englishTerm)
+        const response = await generateVocabData(englishTerm, cefrLevel)
 
         if (!response.success || !response.data) {
           const errorMessage =
@@ -176,8 +176,8 @@ export function useVocabGenerator() {
   )
 
   const generateAndSave = useCallback(
-    async (englishTerm: string): Promise<string | null> => {
-      const vocabData = await generateData(englishTerm)
+    async (englishTerm: string, cefrLevel: CefrLevel): Promise<string | null> => {
+      const vocabData = await generateData(englishTerm, cefrLevel)
       if (!vocabData) return null
       const savedId = await saveToFirestore(vocabData)
       return savedId

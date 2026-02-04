@@ -1,12 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+import { getAuth } from 'firebase/auth'
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
 import { VocabCardInput } from '@/types/vocab'
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { db } from '@/lib/firebase'
 
 export function VocabForm() {
   const [inputValue, setInputValue] = useState('')
+  const [cefrLevel, setCefrLevel] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1'>('B1')
+  const [existingCategories, setExistingCategories] = useState<string[]>([])
+  const [isCustomCategory, setIsCustomCategory] = useState(false)
   const {
     isLoading,
     isGenerating,
@@ -19,11 +25,56 @@ export function VocabForm() {
     resetState,
   } = useVocabGenerator()
 
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchCategories = async () => {
+      const auth = getAuth()
+      const user = auth.currentUser
+
+      if (!user) {
+        if (isMounted) {
+          setExistingCategories([])
+          setIsCustomCategory(true)
+        }
+        return
+      }
+
+      try {
+        const vocabRef = collection(db, 'users', user.uid, 'vocab')
+        const snapshot = await getDocs(vocabRef)
+        const categories = Array.from(
+          new Set(
+            snapshot.docs
+              .map((docSnapshot) => (docSnapshot.data() as { category?: string }).category)
+              .filter((category): category is string => Boolean(category && category.trim()))
+          )
+        ).sort((a, b) => a.localeCompare(b))
+
+        if (isMounted) {
+          setExistingCategories(categories)
+          setIsCustomCategory(categories.length === 0)
+        }
+      } catch {
+        if (isMounted) {
+          setExistingCategories([])
+          setIsCustomCategory(true)
+        }
+      }
+    }
+
+    fetchCategories()
+
+    return () => {
+      isMounted = false
+    }
+  }, [savedVocabId])
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim()) return
 
-    const vocabData = await generateData(inputValue)
+    const vocabData = await generateData(inputValue, cefrLevel)
     if (!vocabData) {
       // Error is already set in the hook state
       return
@@ -59,16 +110,30 @@ export function VocabForm() {
           >
             New Term
           </label>
-          <div className="relative">
-            <input
-              id="english-term"
-              type="text"
-              placeholder="Enter an English word (e.g., meeting)..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              disabled={isLoading}
-              className="w-full px-6 py-4 text-lg border border-input rounded-xl bg-background/50 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
-            />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <input
+                id="english-term"
+                type="text"
+                placeholder="Enter an English word (e.g., meeting)..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                disabled={isLoading}
+                className="w-full px-6 py-4 text-lg border border-input rounded-xl bg-background/50 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
+              />
+            </div>
+
+            <select
+              value={cefrLevel}
+              onChange={(e) => setCefrLevel(e.target.value as any)}
+              className="px-4 py-4 border border-input rounded-xl bg-background/50 font-bold text-muted-foreground focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="A1">A1</option>
+              <option value="A2">A2</option>
+              <option value="B1">B1</option>
+              <option value="B2">B2</option>
+              <option value="C1">C1</option>
+            </select>
           </div>
         </div>
 
@@ -106,6 +171,9 @@ export function VocabForm() {
           onSave={handleSave}
           onCancel={handleReset}
           isSaving={isSaving}
+          existingCategories={existingCategories}
+          isCustomCategory={isCustomCategory}
+          setIsCustomCategory={setIsCustomCategory}
         />
       )}
 
@@ -132,6 +200,9 @@ interface VocabDataDisplayProps {
   onSave: (editedData: VocabCardInput) => void
   onCancel: () => void
   isSaving: boolean
+  existingCategories: string[]
+  isCustomCategory: boolean
+  setIsCustomCategory: (value: boolean) => void
 }
 
 function VocabDataDisplay({
@@ -139,8 +210,22 @@ function VocabDataDisplay({
   onSave,
   onCancel,
   isSaving,
+  existingCategories,
+  isCustomCategory,
+  setIsCustomCategory,
 }: VocabDataDisplayProps) {
   const [editableData, setEditableData] = useState(data)
+  const hasExistingCategories = existingCategories.length > 0
+
+  useEffect(() => {
+    if (!hasExistingCategories || isCustomCategory) return
+    if (!existingCategories.includes(editableData.category)) {
+      setEditableData((prev) => ({
+        ...prev,
+        category: existingCategories[0] || '',
+      }))
+    }
+  }, [editableData.category, existingCategories, hasExistingCategories, isCustomCategory])
 
   const handleSaveClick = () => {
     onSave(editableData)
@@ -215,16 +300,57 @@ function VocabDataDisplay({
           <label className="text-sm font-medium text-muted-foreground">
             Category
           </label>
-          <select
-            value={editableData.category}
-            onChange={(e) =>
-              setEditableData({ ...editableData, category: e.target.value as any })
-            }
-            className="w-full px-3 py-2 bg-background border border-input rounded text-foreground text-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="work">work</option>
-            <option value="general">general</option>
-          </select>
+          {hasExistingCategories && !isCustomCategory ? (
+            <select
+              value={
+                existingCategories.includes(editableData.category)
+                  ? editableData.category
+                  : existingCategories[0]
+              }
+              onChange={(e) => {
+                if (e.target.value === '__add_new__') {
+                  setIsCustomCategory(true)
+                  return
+                }
+                setEditableData({ ...editableData, category: e.target.value })
+              }}
+              className="w-full px-3 py-2 bg-background border border-input rounded text-foreground text-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {existingCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+              <option value="__add_new__">+ Add New Category</option>
+            </select>
+          ) : (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={editableData.category}
+                onChange={(e) =>
+                  setEditableData({ ...editableData, category: e.target.value })
+                }
+                placeholder="e.g. Work, Travel, Food..."
+                className="w-full px-3 py-2 bg-background border border-input rounded text-foreground text-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {hasExistingCategories && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomCategory(false)
+                    setEditableData((prev) => ({
+                      ...prev,
+                      category: existingCategories[0] || prev.category,
+                    }))
+                  }}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Use existing category
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -268,7 +394,7 @@ function VocabDataDisplay({
               Saving...
             </>
           ) : (
-            'Save to Firestore'
+            'Save'
           )}
         </button>
         <button

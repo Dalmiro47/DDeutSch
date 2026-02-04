@@ -1,7 +1,7 @@
 'use server'
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { ServerActionResponse, GeminiResponse } from '@/types/vocab'
+import { ServerActionResponse, GeminiResponse, CefrLevel } from '@/types/vocab'
 
 const genAI = (() => {
   const apiKey = process.env.GEMINI_API_KEY
@@ -11,9 +11,16 @@ const genAI = (() => {
   return new GoogleGenerativeAI(apiKey)
 })()
 
-const VOCAB_PROMPT_TEMPLATE = (englishTerm: string) => `
-You are an expert German language instructor specializing in business terminology.
-Your task is to provide German translations with grammatical details for the following English term, with a focus on CORPORATE/BUSINESS/OFFICE contexts.
+const VOCAB_PROMPT_TEMPLATE = (englishTerm: string, level: CefrLevel) => `
+You are an expert German language instructor.
+Target CEFR Level: ${level}
+
+Constraints based on level:
+- A1: Use very short, simple sentences. Present tense. Basic vocabulary.
+- A2: Simple sentences but with slightly more detail. High-frequency words.
+- B1: Moderate sentence length. Standard business/workplace context.
+- B2: Complex sentence structures, subordinate clauses, sophisticated vocabulary.
+- C1: Advanced, nuanced expression. Use idiomatically correct, complex grammar and sophisticated vocabulary.
 
 English Term: "${englishTerm}"
 
@@ -21,16 +28,15 @@ IMPORTANT REQUIREMENTS:
 1. Return ONLY valid JSON, no markdown, no code blocks, no explanations
 2. The article must be one of: "der", "die", "das", or "none" (for verbs/adjectives/adverbs)
 3. Provide the plural form in German (nominative case)
-4. The example sentence MUST be in a business context (meetings, projects, emails, ERP systems, offices, teamwork, deadlines)
-5. The example sentence must contain the German term and be natural, professional German
-6. Provide an English translation of the example sentence
+4. The example sentence must contain the German term and be natural, professional German
+5. Provide an English translation of the example sentence
 
 Return JSON in this exact format:
 {
   "germanTerm": "German translation of the term",
   "article": "der|die|das|none",
   "plural": "plural form in German (or same as singular if no plural)",
-  "exampleSentence": "A professional business context sentence in German using the term",
+  "exampleSentence": "A professional sentence in German using the term",
   "englishSentence": "English translation of the example sentence"
 }
 
@@ -46,7 +52,8 @@ If the term cannot be translated or is invalid, return:
 `
 
 async function callGeminiAPI(
-  englishTerm: string
+  englishTerm: string,
+  cefrLevel: CefrLevel
 ): Promise<GeminiResponse> {
   if (!genAI) {
     console.error('Gemini API key not configured')
@@ -62,7 +69,7 @@ async function callGeminiAPI(
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
-    const prompt = VOCAB_PROMPT_TEMPLATE(englishTerm)
+    const prompt = VOCAB_PROMPT_TEMPLATE(englishTerm, cefrLevel)
 
     const result = await model.generateContent(prompt)
     const responseText = result.response.text()
@@ -117,7 +124,8 @@ async function callGeminiAPI(
 }
 
 export async function generateVocabData(
-  englishTerm: string
+  englishTerm: string,
+  cefrLevel: CefrLevel = 'B1'
 ): Promise<ServerActionResponse> {
   // Input validation
   if (!englishTerm || typeof englishTerm !== 'string') {
@@ -153,8 +161,19 @@ export async function generateVocabData(
     }
   }
 
+  const validLevels: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1']
+  if (!validLevels.includes(cefrLevel)) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_LEVEL',
+        message: 'CEFR level must be one of A1, A2, B1, B2, or C1',
+      },
+    }
+  }
+
   try {
-    const geminiData = await callGeminiAPI(sanitizedTerm)
+    const geminiData = await callGeminiAPI(sanitizedTerm, cefrLevel)
 
     // Check for Gemini API errors
     if (
@@ -178,7 +197,8 @@ export async function generateVocabData(
       plural: geminiData.plural,
       exampleSentence: geminiData.exampleSentence,
       englishSentence: geminiData.englishSentence, // <--- Add to response
-      category: 'work' as const,
+      category: 'work',
+      cefrLevel: cefrLevel,
     }
 
     return {
