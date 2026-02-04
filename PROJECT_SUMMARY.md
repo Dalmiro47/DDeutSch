@@ -1,4 +1,23 @@
-# DeinContext Project Summary
+# Project Summary: DDeutSch
+
+**DDeutSch** is a modern vocabulary acquisition tool built to solve the specific problem of learning **Business German** contextually.
+
+### Problem Solved
+Traditional flashcards lack context. Learning the word "Meeting" is useless without knowing if it's "das Meeting" or "die Besprechung", and how to use it in a sentence like "I need to schedule a meeting."
+
+### Solution
+DDeutSch uses AI to generate these details on the fly. It doesn't just translate; it acts as a German Tutor, creating content appropriate for the user's proficiency level (CEFR).
+
+### Current Status (v1.0)
+- **Core Functionality**: Complete (Gen, Save, Edit, Delete).
+- **Study System**: Complete (Phase-Locked SRS).
+- **Stability**: High (AI Fallbacks + Duplicate Handling implemented).
+- **UX**: Polished (Mobile-first, Audio support, Dark mode compatible).
+
+### Future Roadmap
+- [ ] Bulk Import from CSV.
+- [ ] "Sentence Builder" Mode (Grammar practice).
+- [ ] Public Deck Sharing.# DeinContext Project Summary
 
 ## ✅ Project Complete
 
@@ -107,7 +126,7 @@ DDeutSch/
 | **Icons** | Lucide React | Beautiful, lightweight |
 | **Backend** | Firebase | Firestore + Auth, serverless |
 | **Client SDK** | firebase/firestore | No Admin SDK needed |
-| **AI** | Google Gemini 1.5 Flash | Fast, accurate translations |
+| **AI** | Google gemini-2.5-flash-lite | Fast, accurate translations |
 | **Server Actions** | Next.js Actions | Secure API calls |
 
 ---

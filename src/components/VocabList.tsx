@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore'
+import { useEffect, useMemo, useState } from 'react'
+import { collection, query, onSnapshot, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { db } from '@/lib/firebase'
 import { VocabCard, VocabCardInput } from '@/types/vocab'
-import { Trash2, Calendar, BookOpen, GraduationCap, RefreshCw, Search, Filter, Volume2, ChevronDown, Edit, Check, X, Info } from 'lucide-react'
+import { Trash2, Calendar, BookOpen, GraduationCap, Search, Filter, Volume2, ChevronDown, Edit, Check, X, PlusCircle, LogOut, Square } from 'lucide-react'
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
+import { calculateNextReview, ReviewDifficulty } from '@/lib/spacedRepetition'
 
 // Helper for Article Colors
 const getArticleColor = (article: string) => {
@@ -49,6 +50,10 @@ export function VocabList() {
   const [isStudyMode, setIsStudyMode] = useState(false)
   const [revealedCardIds, setRevealedCardIds] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [isUpdatingId, setIsUpdatingId] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [activeCardId, setActiveCardId] = useState<string | null>(null)
+  const [playingAudioKey, setPlayingAudioKey] = useState<string | null>(null)
 
   // Edit Mode State
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -99,12 +104,36 @@ export function VocabList() {
     }
   }, [])
 
-  const handleSpeak = (e: React.MouseEvent, text: string) => {
-    e.stopPropagation() 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(new Date())
+    }, 60_000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  const handleAudioControl = (e: React.MouseEvent, text: string, key: string) => {
+    e.stopPropagation()
+
+    if (playingAudioKey === key) {
+      window.speechSynthesis.cancel()
+      setPlayingAudioKey(null)
+      return
+    }
+
     if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+
       const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = 'de-DE' 
-      utterance.rate = 0.9 
+      utterance.lang = 'de-DE'
+      utterance.rate = 0.9
+
+      utterance.onend = () => setPlayingAudioKey(null)
+      utterance.onerror = () => setPlayingAudioKey(null)
+
+      setPlayingAudioKey(key)
       window.speechSynthesis.speak(utterance)
     }
   }
@@ -172,7 +201,7 @@ export function VocabList() {
     new Set(vocabCards.map((card) => card.cefrLevel || 'B1'))
   ).sort()
 
-  const filteredCards = vocabCards.filter((card) => {
+  const baseFilteredCards = vocabCards.filter((card) => {
     const searchLower = searchTerm.toLowerCase()
     const matchesSearch = 
       card.originalTerm.toLowerCase().includes(searchLower) ||
@@ -183,14 +212,62 @@ export function VocabList() {
     return matchesSearch && matchesCategory && matchesCefr
   })
 
+  const dueCards = baseFilteredCards.filter((card) => {
+    if (card.id === isUpdatingId) return false
+    const isDue = !card.nextReview || card.nextReview.toDate() <= currentTime
+    const isInSession = card.learningStep !== undefined && card.learningStep !== null
+    return isDue || isInSession
+  })
+
+  const filteredCards = baseFilteredCards
+
+  const visibleCount = isStudyMode ? dueCards.length : filteredCards.length
+
+  const selectNextCardId = (cards: typeof dueCards) => {
+    const phase1 = cards.filter((card) => (card.learningStep ?? 0) === 0)
+    const phase2 = cards.filter((card) => card.learningStep === 1)
+    const phase3 = cards.filter((card) => card.learningStep === 2)
+
+    console.log("Selecting next card from phases:", {
+      phase1: phase1.length,
+      phase2: phase2.length,
+      phase3: phase3.length,
+    })
+
+    let activeDeck: typeof dueCards = []
+    if (phase1.length > 0) activeDeck = phase1
+    else if (phase2.length > 0) activeDeck = phase2
+    else activeDeck = phase3
+
+    if (activeDeck.length === 0) return null
+
+    const randomIndex = Math.floor(Math.random() * activeDeck.length)
+    return activeDeck[randomIndex].id
+  }
+
+  useEffect(() => {
+    if (isStudyMode && !activeCardId && dueCards.length > 0) {
+      const nextId = selectNextCardId(dueCards)
+      if (nextId) setActiveCardId(nextId)
+    }
+  }, [isStudyMode, activeCardId, dueCards.length])
+
+  const currentCard = useMemo(() => {
+    if (activeCardId === isUpdatingId) return null
+    return vocabCards.find((card) => card.id === activeCardId) || null
+  }, [activeCardId, vocabCards, isUpdatingId])
+
   const handleCardClick = (id: string) => {
     if (!isStudyMode) return
     if (editingId === id) return 
 
+    const isThisCardRevealed = revealedCardIds.has(id)
+
     const newRevealed = new Set(revealedCardIds)
-    if (newRevealed.has(id)) {
+    if (isThisCardRevealed) {
       newRevealed.delete(id)
     } else {
+      newRevealed.clear()
       newRevealed.add(id)
     }
     setRevealedCardIds(newRevealed)
@@ -199,8 +276,89 @@ export function VocabList() {
   const toggleStudyMode = () => {
     setIsStudyMode(!isStudyMode)
     setRevealedCardIds(new Set())
+    setActiveCardId(null)
     setEditingId(null)
     setHoveredSentenceId(null) // Reset hovers
+  }
+
+  const handleRating = async (
+    e: React.MouseEvent,
+    cardId: string,
+    difficulty: ReviewDifficulty
+  ) => {
+    e.stopPropagation()
+    setIsUpdatingId(cardId)
+    setActiveCardId(null)
+
+    const card = vocabCards.find((item) => item.id === cardId)
+    if (!card) return
+
+    const currentStep = card.learningStep ?? 0
+
+    try {
+      if (difficulty === 'very_hard') {
+        await updateVocabCard(cardId, {
+          nextReview: Timestamp.fromMillis(Date.now() - 60000),
+          learningStep: 0,
+        })
+        return
+      }
+
+      if (currentStep < 2) {
+        await updateVocabCard(cardId, {
+          nextReview: Timestamp.fromMillis(Date.now() - 60000),
+          learningStep: currentStep + 1,
+        })
+        return
+      }
+
+      const nextReview = calculateNextReview(difficulty)
+      await updateVocabCard(cardId, {
+        nextReview,
+        learningStep: null as any,
+      })
+
+      setRevealedCardIds((prev) => {
+        const next = new Set(prev)
+        next.delete(cardId)
+        return next
+      })
+    } catch (error) {
+      console.error("Rating failed:", error)
+    } finally {
+      setTimeout(() => {
+        setIsUpdatingId(null)
+      }, 500)
+    }
+  }
+
+  const getRoundLabel = (card: VocabCard & { id: string }) => {
+    const step = card.learningStep ?? 0
+    if (step >= 2) return 'Final Round'
+    return `Round ${step + 1}/3`
+  }
+
+  const handleSkipLoop = async (e: React.MouseEvent, cardId: string) => {
+    e.stopPropagation()
+    setIsUpdatingId(cardId)
+    setActiveCardId(null)
+    try {
+      const nextReview = calculateNextReview('medium')
+      await updateVocabCard(cardId, { nextReview, learningStep: null as any })
+
+      setRevealedCardIds((prev) => {
+        const next = new Set(prev)
+        next.delete(cardId)
+        return next
+      })
+    } catch (error) {
+      console.error("Failed to skip loop", error)
+      alert("Failed to save progress")
+    } finally {
+      setTimeout(() => {
+        setIsUpdatingId(null)
+      }, 500)
+    }
   }
 
   const formatPlural = (pluralText: string) => {
@@ -227,30 +385,32 @@ export function VocabList() {
           <h2 className="text-2xl font-bold text-foreground">
             Your Collection 
             <span className="text-base font-normal text-muted-foreground ml-2">
-              ({filteredCards.length}{filteredCards.length !== vocabCards.length && ` of ${vocabCards.length}`})
+              ({visibleCount}{!isStudyMode && filteredCards.length !== vocabCards.length && ` of ${vocabCards.length}`})
             </span>
           </h2>
           
-          <button
-            onClick={toggleStudyMode}
-            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-full font-medium transition-all duration-300 ${
-              isStudyMode 
-                ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary ring-offset-2' 
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
-          >
-            {isStudyMode ? (
-              <>
-                <RefreshCw className="w-4 h-4" />
-                Exit Study Mode
-              </>
-            ) : (
-              <>
-                <GraduationCap className="w-4 h-4" />
-                Start Study Mode
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleStudyMode}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-full font-medium transition-all duration-300 ${
+                isStudyMode 
+                  ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary ring-offset-2' 
+                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              }`}
+            >
+              {isStudyMode ? (
+                <>
+                  <LogOut className="w-4 h-4" />
+                  Exit Study Mode
+                </>
+              ) : (
+                <>
+                  <GraduationCap className="w-4 h-4" />
+                  Start Study Mode
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col md:flex-row gap-3">
@@ -261,7 +421,10 @@ export function VocabList() {
               placeholder="Search English, German, or context..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-card border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
+              disabled={isStudyMode}
+              className={`w-full pl-10 pr-4 py-3 text-xs sm:text-sm placeholder:text-xs sm:placeholder:text-sm bg-card border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm ${
+                isStudyMode ? 'opacity-40 cursor-not-allowed' : ''
+              }`}
             />
           </div>
 
@@ -301,8 +464,278 @@ export function VocabList() {
         </div>
       </div>
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredCards.length === 0 ? (
+      <div
+        className={
+          isStudyMode
+            ? 'flex flex-col items-center justify-start gap-4 mt-2'
+            : 'grid gap-4 md:grid-cols-2 lg:grid-cols-3'
+        }
+      >
+        {isStudyMode ? (
+          currentCard ? (
+            [currentCard].map((card) => {
+              return (
+                <div
+                  key={card.id}
+                  onClick={() => handleCardClick(card.id)}
+                  className={`
+                    group relative p-5 border rounded-xl bg-card transition-all duration-300
+                    ${isStudyMode ? 'cursor-pointer hover:shadow-lg active:scale-95' : 'hover:-translate-y-0.5'}
+                    ${isStudyMode && !revealedCardIds.has(card.id) ? 'border-dashed border-primary/30 bg-primary/5' : 'border-border'}
+                  `}
+                >
+                  {/* Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`
+                      font-bold uppercase tracking-wider transition-all duration-300
+                      ${isStudyMode && !revealedCardIds.has(card.id) ? 'text-lg text-primary mx-auto pt-8 pb-8 scale-110' : 'text-[10px] text-muted-foreground'}
+                    `}>
+                      {card.originalTerm}
+                    </span>
+
+                    {(!isStudyMode || revealedCardIds.has(card.id)) && (
+                      <div className="flex items-center gap-1">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getLevelBadgeColor(card.cefrLevel)}`}>
+                          {card.cefrLevel || 'B1'}
+                        </span>
+                        {/* Buttons always visible for better UX */}
+                        <button
+                          onClick={(e) => startEditing(e, card)}
+                          className="p-1.5 hover:bg-primary/10 rounded-md text-muted-foreground hover:text-primary transition-all"
+                          title="Edit Card"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        
+                        <button
+                          onClick={(e) => handleDelete(e, card.id)}
+                          disabled={deletingId === card.id}
+                          className="p-1.5 hover:bg-destructive/10 rounded-md text-muted-foreground hover:text-destructive transition-all"
+                          title="Delete Card"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {isStudyMode && (
+                    <div className="flex justify-center mb-3">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/70 border border-border/60 rounded-full px-2 py-0.5">
+                        {getRoundLabel(card)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Study Mode Challenge: English Context */}
+                  {isStudyMode && !revealedCardIds.has(card.id) && card.englishSentence && (
+                    <div className="mt-6 mb-8 px-4 py-3 bg-muted/30 rounded-lg border border-border/30 text-center animate-in fade-in duration-500">
+                      <p className="text-sm text-muted-foreground italic leading-relaxed">
+                        &quot;{card.englishSentence}&quot;
+                      </p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-2 tracking-widest">
+                        Translate to German
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ANSWER SECTION */}
+                  <div className={`transition-all duration-300 ${!isStudyMode || revealedCardIds.has(card.id) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 hidden'}`}>
+                    
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        {card.article !== 'none' && (
+                          <span className={`px-2.5 py-0.5 rounded-md text-sm font-bold border shadow-sm ${getArticleColor(card.article)}`}>
+                            {card.article}
+                          </span>
+                        )}
+                        <h3 className="text-xl font-bold text-foreground tracking-tight">
+                          {stripLeadingArticle(card.germanTerm, card.article)}
+                        </h3>
+                      </div>
+                      <button
+                        onClick={(e) => handleAudioControl(e, `${card.article !== 'none' ? card.article : ''} ${card.germanTerm}`, `${card.id}-term`)}
+                        className={`p-1.5 rounded-full transition-all active:scale-95 ${
+                          playingAudioKey === `${card.id}-term`
+                            ? 'bg-red-100 text-red-600 hover:bg-red-200 animate-pulse'
+                            : 'bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110'
+                        }`}
+                        title={playingAudioKey === `${card.id}-term` ? 'Stop' : 'Listen'}
+                      >
+                        {playingAudioKey === `${card.id}-term` ? (
+                          <Square className="w-4 h-4 fill-current" />
+                        ) : (
+                          <Volume2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground/60 text-xs w-10">Plural</span>
+                        {card.article !== 'none' && (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
+                            die
+                          </span>
+                        )}
+                        <span className="font-medium text-foreground">
+                          {formatPlural(card.plural)}
+                        </span>
+                      </div>
+
+                      {/* Example Sentence with RELIABLE Hover AND Click (Mobile) */}
+                      <div 
+                        className="relative bg-muted/50 p-3 rounded-lg border border-border/50 cursor-help"
+                        onMouseEnter={() => setHoveredSentenceId(card.id)}
+                        onMouseLeave={() => setHoveredSentenceId(null)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setHoveredSentenceId(hoveredSentenceId === card.id ? null : card.id)
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4 pointer-events-none">
+                            &quot;{card.exampleSentence}&quot;
+                          </p>
+                          
+                          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                            <button
+                              onClick={(e) => handleAudioControl(e, card.exampleSentence, `${card.id}-sentence`)}
+                              className={`transition-all p-1 ${
+                                playingAudioKey === `${card.id}-sentence`
+                                  ? 'text-red-500 hover:text-red-600 scale-110'
+                                  : 'text-muted-foreground/50 hover:text-primary hover:scale-110'
+                              }`}
+                              title={playingAudioKey === `${card.id}-sentence` ? 'Stop' : 'Listen to sentence'}
+                            >
+                              {playingAudioKey === `${card.id}-sentence` ? (
+                                <Square className="w-4 h-4 fill-current" />
+                              ) : (
+                                <Volume2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {hoveredSentenceId === card.id && (
+                          <div className="absolute left-0 -top-2 -translate-y-full w-full z-50 px-2 pb-2 animate-in fade-in zoom-in-95 duration-150">
+                            <div className="bg-popover text-popover-foreground text-xs p-3 rounded-md shadow-xl border border-border/50 backdrop-blur-md relative">
+                              <div className="absolute bottom-0 left-6 translate-y-1/2 rotate-45 w-2 h-2 bg-popover border-r border-b border-border/50"></div>
+                              {card.englishSentence || "No translation available for this card."}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-between text-[10px] text-muted-foreground/60 border-t border-border/40 mt-3">
+                        <div className="flex items-center">
+                          <Calendar className="w-3 h-3 mr-1.5" />
+                          {new Date(card.createdAt.toDate()).toLocaleDateString()}
+                        </div>
+                        <span className="uppercase tracking-wider opacity-70 border border-border rounded px-1.5 py-0.5">
+                          {card.category}
+                        </span>
+                      </div>
+
+                      {isStudyMode && (card.learningStep ?? 0) >= 1 && (
+                        <button
+                          onClick={(e) => handleSkipLoop(e, card.id)}
+                          disabled={isUpdatingId === card.id}
+                          className="w-full mb-2 py-2 bg-secondary/50 hover:bg-secondary text-xs font-bold uppercase rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          Finish Loop Early (Keep Good (3d))
+                        </button>
+                      )}
+
+                      {isStudyMode && (
+                        <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-border/50 animate-in slide-in-from-top-2">
+                          <button
+                            onClick={(e) => {
+                              handleRating(e, card.id, 'very_hard')
+                            }}
+                            disabled={isUpdatingId === card.id}
+                            className="px-1 py-3 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors disabled:opacity-50"
+                          >
+                            Again (Reset)
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              handleRating(e, card.id, 'hard')
+                            }}
+                            disabled={isUpdatingId === card.id}
+                            className="px-1 py-3 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-200 transition-colors disabled:opacity-50"
+                          >
+                            Hard (1d)
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              handleRating(e, card.id, 'medium')
+                            }}
+                            disabled={isUpdatingId === card.id}
+                            className="px-1 py-3 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-amber-200 transition-colors disabled:opacity-50"
+                          >
+                            Good (3d)
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              handleRating(e, card.id, 'easy')
+                            }}
+                            disabled={isUpdatingId === card.id}
+                            className="px-1 py-3 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-green-200 transition-colors disabled:opacity-50"
+                          >
+                            Easy (7d)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {isStudyMode && !revealedCardIds.has(card.id) && (
+                    <div className="absolute inset-x-0 bottom-4 text-center">
+                      <span className="text-xs font-medium text-primary/60 animate-pulse">
+                        Tap to reveal
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          ) : (
+            <div className="col-span-full text-center py-16 px-4 bg-green-50/50 dark:bg-green-950/20 rounded-xl border border-green-100 dark:border-green-900/50 animate-in fade-in zoom-in-95 duration-500">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-green-900 dark:text-green-100 mb-2">Session Complete!</h3>
+              <p className="text-green-800 dark:text-green-300 max-w-md mx-auto">
+                You've reviewed all your due cards for now. Great job keeping your streak alive!
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
+                <button 
+                  onClick={() => {
+                    const inputElement = document.getElementById('english-term')
+                    if (inputElement) {
+                      inputElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      inputElement.focus()
+                    } else {
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold transition-all shadow-lg shadow-green-600/20 flex items-center gap-2"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Generate New Term
+                </button>
+                
+                <button 
+                  onClick={toggleStudyMode}
+                  className="px-6 py-2 bg-transparent hover:bg-green-100 dark:hover:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium transition-colors border border-green-200 dark:border-green-800"
+                >
+                  Back to Collection
+                </button>
+              </div>
+            </div>
+          )
+        ) : filteredCards.length === 0 ? (
           <div className="col-span-full text-center py-12 text-muted-foreground italic bg-muted/20 rounded-xl border border-dashed border-border/50">
             No cards match your search criteria.
           </div>
@@ -310,78 +743,10 @@ export function VocabList() {
           filteredCards.map((card) => {
             const isRevealed = revealedCardIds.has(card.id)
             const showAnswer = !isStudyMode || isRevealed
-            const isEditing = editingId === card.id
             const isHovered = hoveredSentenceId === card.id // Check hover state
-
-            // --- RENDER EDIT FORM ---
-            if (isEditing && editForm) {
-              return (
-                <div key={card.id} className="p-5 border border-primary/50 ring-1 ring-primary/20 rounded-xl bg-card shadow-lg space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">English</label>
-                    <input 
-                      className="w-full p-2 text-sm border rounded bg-background"
-                      value={editForm.originalTerm}
-                      onChange={(e) => setEditForm({...editForm, originalTerm: e.target.value})}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="w-1/3 space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-muted-foreground">Art.</label>
-                      <select 
-                        className="w-full p-2 text-sm border rounded bg-background"
-                        value={editForm.article}
-                        onChange={(e) => setEditForm({...editForm, article: e.target.value as any})}
-                      >
-                         <option value="der">der</option><option value="die">die</option><option value="das">das</option><option value="none">none</option>
-                      </select>
-                    </div>
-                    <div className="w-2/3 space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-muted-foreground">German</label>
-                      <input 
-                        className="w-full p-2 text-sm border rounded font-bold bg-background"
-                        value={editForm.germanTerm}
-                        onChange={(e) => setEditForm({...editForm, germanTerm: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Plural</label>
-                    <input 
-                      className="w-full p-2 text-sm border rounded bg-background"
-                      value={editForm.plural}
-                      onChange={(e) => setEditForm({...editForm, plural: e.target.value})}
-                    />
-                  </div>
-                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Sentence</label>
-                    <textarea 
-                      className="w-full p-2 text-sm border rounded resize-none bg-background"
-                      rows={2}
-                      value={editForm.exampleSentence}
-                      onChange={(e) => setEditForm({...editForm, exampleSentence: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Translation</label>
-                    <textarea 
-                      className="w-full p-2 text-sm border rounded resize-none bg-background"
-                      rows={2}
-                      value={editForm.englishSentence || ''}
-                      onChange={(e) => setEditForm({...editForm, englishSentence: e.target.value})}
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <button onClick={(e) => saveEdit(e, card.id)} className="flex-1 bg-primary text-primary-foreground text-xs py-2 rounded flex items-center justify-center gap-1 hover:bg-primary/90">
-                      <Check className="w-3 h-3" /> Save
-                    </button>
-                    <button onClick={(e) => cancelEditing(e)} className="flex-1 bg-secondary text-secondary-foreground text-xs py-2 rounded flex items-center justify-center gap-1 hover:bg-secondary/90">
-                      <X className="w-3 h-3" /> Cancel
-                    </button>
-                  </div>
-                </div>
-              )
-            }
+            const isAnyRevealed = revealedCardIds.size > 0
+            const isThisRevealed = revealedCardIds.has(card.id)
+            const isDimmed = !isStudyMode && isAnyRevealed && !isThisRevealed
 
             // --- RENDER CARD VIEW ---
             return (
@@ -392,6 +757,7 @@ export function VocabList() {
                   group relative p-5 border rounded-xl bg-card transition-all duration-300
                   ${isStudyMode ? 'cursor-pointer hover:shadow-lg active:scale-95' : 'hover:-translate-y-0.5'}
                   ${isStudyMode && !isRevealed ? 'border-dashed border-primary/30 bg-primary/5' : 'border-border'}
+                  ${isDimmed ? 'opacity-40 grayscale pointer-events-none' : ''}
                 `}
               >
                 {/* Header */}
@@ -456,11 +822,19 @@ export function VocabList() {
                       </h3>
                     </div>
                     <button
-                      onClick={(e) => handleSpeak(e, `${card.article !== 'none' ? card.article : ''} ${card.germanTerm}`)}
-                      className="p-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110 transition-all active:scale-95"
-                      title="Listen"
+                      onClick={(e) => handleAudioControl(e, `${card.article !== 'none' ? card.article : ''} ${card.germanTerm}`, `${card.id}-term`)}
+                      className={`p-1.5 rounded-full transition-all active:scale-95 ${
+                        playingAudioKey === `${card.id}-term`
+                          ? 'bg-red-100 text-red-600 hover:bg-red-200 animate-pulse'
+                          : 'bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110'
+                      }`}
+                      title={playingAudioKey === `${card.id}-term` ? 'Stop' : 'Listen'}
                     >
-                      <Volume2 className="w-4 h-4" />
+                      {playingAudioKey === `${card.id}-term` ? (
+                        <Square className="w-4 h-4 fill-current" />
+                      ) : (
+                        <Volume2 className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
 
@@ -489,11 +863,28 @@ export function VocabList() {
                         setHoveredSentenceId(hoveredSentenceId === card.id ? null : card.id)
                       }}
                     >
-                      <div className="flex items-start justify-between pointer-events-none">
-                         <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4">
-                           &quot;{card.exampleSentence}&quot;
-                         </p>
-                         <Info className="w-3 h-3 text-muted-foreground/30 ml-2 mt-1 flex-shrink-0" />
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4 pointer-events-none">
+                          &quot;{card.exampleSentence}&quot;
+                        </p>
+                        
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                          <button
+                            onClick={(e) => handleAudioControl(e, card.exampleSentence, `${card.id}-sentence`)}
+                            className={`transition-all p-1 ${
+                              playingAudioKey === `${card.id}-sentence`
+                                ? 'text-red-500 hover:text-red-600 scale-110'
+                                : 'text-muted-foreground/50 hover:text-primary hover:scale-110'
+                            }`}
+                            title={playingAudioKey === `${card.id}-sentence` ? 'Stop' : 'Listen to sentence'}
+                          >
+                            {playingAudioKey === `${card.id}-sentence` ? (
+                              <Square className="w-4 h-4 fill-current" />
+                            ) : (
+                              <Volume2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                       
                       {/* React State Controlled Tooltip (100% Reliability) */}
@@ -517,6 +908,57 @@ export function VocabList() {
                         {card.category}
                       </span>
                     </div>
+
+                    {isStudyMode && (card.learningStep ?? 0) >= 1 && (
+                      <button
+                        onClick={(e) => handleSkipLoop(e, card.id)}
+                        disabled={isUpdatingId === card.id}
+                        className="w-full mb-2 py-2 bg-secondary/50 hover:bg-secondary text-xs font-bold uppercase rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        Finish Loop Early (Keep Good (3d))
+                      </button>
+                    )}
+
+                    {isStudyMode && (
+                      <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-border/50 animate-in slide-in-from-top-2">
+                        <button
+                          onClick={(e) => {
+                            handleRating(e, card.id, 'very_hard')
+                          }}
+                          disabled={isUpdatingId === card.id}
+                          className="px-1 py-3 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors disabled:opacity-50"
+                        >
+                          Again (Reset)
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            handleRating(e, card.id, 'hard')
+                          }}
+                          disabled={isUpdatingId === card.id}
+                          className="px-1 py-3 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-200 transition-colors disabled:opacity-50"
+                        >
+                          Hard (1d)
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            handleRating(e, card.id, 'medium')
+                          }}
+                          disabled={isUpdatingId === card.id}
+                          className="px-1 py-3 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-amber-200 transition-colors disabled:opacity-50"
+                        >
+                          Good (3d)
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            handleRating(e, card.id, 'easy')
+                          }}
+                          disabled={isUpdatingId === card.id}
+                          className="px-1 py-3 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-green-200 transition-colors disabled:opacity-50"
+                        >
+                          Easy (7d)
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -531,6 +973,200 @@ export function VocabList() {
             )
           })
         )}
+      </div>
+
+      {editingId && editForm && (
+        <EditVocabDialog
+          form={editForm}
+          setForm={setEditForm as any}
+          onSave={(e) => saveEdit(e, editingId)}
+          onCancel={cancelEditing}
+          uniqueCategories={uniqueCategories}
+        />
+      )}
+    </div>
+  )
+}
+
+interface EditVocabDialogProps {
+  form: VocabCardInput
+  setForm: (form: VocabCardInput) => void
+  onSave: (e: React.MouseEvent) => void
+  onCancel: (e: React.MouseEvent) => void
+  uniqueCategories: string[]
+}
+
+function EditVocabDialog({
+  form,
+  setForm,
+  onSave,
+  onCancel,
+  uniqueCategories,
+}: EditVocabDialogProps) {
+  const [isCustomCategory, setIsCustomCategory] = useState(
+    !uniqueCategories.includes(form.category) && uniqueCategories.length > 0
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div
+        className="bg-card border border-border text-card-foreground rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Edit className="w-5 h-5 text-primary" />
+            Edit Card
+          </h2>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">English Term</label>
+              <input
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                value={form.originalTerm}
+                onChange={(e) => setForm({ ...form, originalTerm: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">German Term</label>
+              <input
+                className="w-full px-3 py-2 border rounded-lg bg-background font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                value={form.germanTerm}
+                onChange={(e) => setForm({ ...form, germanTerm: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">Article</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                value={form.article}
+                onChange={(e) => setForm({ ...form, article: e.target.value as any })}
+              >
+                <option value="der">der</option>
+                <option value="die">die</option>
+                <option value="das">das</option>
+                <option value="none">none</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">Plural</label>
+              <input
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                value={form.plural}
+                onChange={(e) => setForm({ ...form, plural: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">Level</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                value={form.cefrLevel}
+                onChange={(e) => setForm({ ...form, cefrLevel: e.target.value as any })}
+              >
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+                <option value="C1">C1</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase text-muted-foreground">Category</label>
+            {!isCustomCategory && uniqueCategories.length > 0 ? (
+              <select
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none appearance-none"
+                value={uniqueCategories.includes(form.category) ? form.category : uniqueCategories[0]}
+                onChange={(e) => {
+                  if (e.target.value === '__new_category__') {
+                    setIsCustomCategory(true)
+                    setForm({ ...form, category: '' })
+                  } else {
+                    setForm({ ...form, category: e.target.value })
+                  }
+                }}
+              >
+                {uniqueCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                <option value="__new_category__" className="font-bold text-primary">
+                  + Add New Category
+                </option>
+              </select>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  placeholder="Type new category..."
+                  autoFocus
+                />
+                {uniqueCategories.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomCategory(false)
+                      setForm({ ...form, category: uniqueCategories[0] || '' })
+                    }}
+                    className="px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg bg-muted/50 hover:bg-muted"
+                  >
+                    Select Existing
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4 pt-2 border-t border-border/50">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">German Sentence</label>
+              <textarea
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none resize-none min-h-[80px]"
+                rows={3}
+                value={form.exampleSentence}
+                onChange={(e) => setForm({ ...form, exampleSentence: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase text-muted-foreground">English Translation</label>
+              <textarea
+                className="w-full px-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 outline-none resize-none min-h-[80px]"
+                rows={3}
+                value={form.englishSentence || ''}
+                onChange={(e) => setForm({ ...form, englishSentence: e.target.value })}
+                placeholder="Translation unavailable..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-border bg-muted/20 flex gap-3 sticky bottom-0">
+          <button
+            onClick={onSave}
+            className="flex-1 bg-primary text-primary-foreground font-bold py-3 rounded-xl hover:bg-primary/90 flex items-center justify-center gap-2 transition-all"
+          >
+            <Check className="w-5 h-5" /> Save Changes
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 bg-secondary text-secondary-foreground font-bold py-3 rounded-xl hover:bg-secondary/80 flex items-center justify-center gap-2 transition-all"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   )

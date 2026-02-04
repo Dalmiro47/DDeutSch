@@ -11,6 +11,14 @@ const genAI = (() => {
   return new GoogleGenerativeAI(apiKey)
 })()
 
+const MODEL_PRIORITY = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-pro',
+]
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const VOCAB_PROMPT_TEMPLATE = (englishTerm: string, level: CefrLevel) => `
 You are an expert German language instructor.
 Target CEFR Level: ${level}
@@ -51,28 +59,60 @@ If the term cannot be translated or is invalid, return:
 }
 `
 
+const VOCAB_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    germanTerm: { type: 'string' },
+    article: { type: 'string' },
+    plural: { type: 'string' },
+    exampleSentence: { type: 'string' },
+    englishSentence: { type: 'string' },
+  },
+  required: ['germanTerm', 'article', 'plural', 'exampleSentence', 'englishSentence'],
+  additionalProperties: false,
+}
+
+async function generateWithFallback(prompt: string, schema: object) {
+  if (!genAI) {
+    throw new Error('Gemini API key not configured')
+  }
+
+  for (let i = 0; i < MODEL_PRIORITY.length; i++) {
+    const modelName = MODEL_PRIORITY[i]
+    try {
+      if (i > 0) {
+        const waitTime = 2000 * i
+        console.log(`...Waiting ${waitTime}ms before trying ${modelName}...`)
+        await delay(waitTime)
+      }
+      console.log(`Attempting generation with model: ${modelName}`)
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+      })
+
+      const result = await model.generateContent(prompt)
+      const response = await result.response
+      return response.text()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`Model ${modelName} failed.`, message)
+    }
+  }
+
+  throw new Error('All AI models failed. Please try again later.')
+}
+
 async function callGeminiAPI(
   englishTerm: string,
   cefrLevel: CefrLevel
 ): Promise<GeminiResponse> {
-  if (!genAI) {
-    console.error('Gemini API key not configured')
-    return {
-      germanTerm: 'error',
-      article: 'none',
-      plural: 'N/A',
-      exampleSentence: 'Gemini API not configured',
-      englishSentence: 'Error',
-    }
-  }
-
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-
     const prompt = VOCAB_PROMPT_TEMPLATE(englishTerm, cefrLevel)
 
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text()
+    const responseText = await generateWithFallback(
+      prompt,
+      VOCAB_RESPONSE_SCHEMA
+    )
 
     const jsonMatch = responseText.match(/\{[\s\S]*?\}/)
     if (!jsonMatch) {
