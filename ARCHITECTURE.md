@@ -1,4 +1,47 @@
-# DeinContext - German Learning App
+# System Architecture
+
+## 1. Data Model (Firestore)
+
+**Collection:** `users/{userId}/vocab/{termID}`
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `originalTerm` | string | English input term (Document ID) |
+| `germanTerm` | string | Translated German term |
+| `article` | string | 'der', 'die', 'das', or 'none' |
+| `plural` | string | Plural form |
+| `exampleSentence` | string | CEFR-graded German sentence |
+| `englishSentence` | string | English translation of the example |
+| `category` | string | e.g., 'Work', 'Travel' |
+| `cefrLevel` | string | A1, A2, B1, B2, C1 |
+| `learningStep` | number | 0 (Round 1), 1 (Round 2), 2 (Round 3). Null = Graduated. |
+| `nextReview` | Timestamp | When the card is due next |
+| `createdAt` | Timestamp | Creation date |
+
+## 2. Study Algorithm (The "Phase Locker")
+
+The app implements a **Strict Phase Priority Queue**:
+
+1. **Fetch**: Loads all cards where `nextReview <= Now` OR `learningStep != null`.
+2. **Sort**: Buckets cards into Phases:
+  - **Phase 1**: `learningStep === 0` (New/Lapsed)
+  - **Phase 2**: `learningStep === 1` (Learning)
+  - **Phase 3**: `learningStep === 2` (Reviewing)
+3. **Select**:  
+  - The system **randomly** picks a card from Phase 1.
+  - If Phase 1 is empty, it picks from Phase 2.
+  - If Phase 2 is empty, it picks from Phase 3.
+  - *Result*: Users cannot proceed to deeper reviews until superficial recognition (Round 1) is complete.
+
+## 3. AI Generation Pipeline
+
+To handle Google Gemini's rate limits and version deprecations, we use a **Priority Fallback Chain**:
+
+1. **Primary**: `gemini-2.5-flash-lite` (Fast, High Quota)
+2. **Secondary**: `gemini-2.0-flash` (Stable Standard)
+3. **Fallback**: `gemini-pro` (Generic Alias)
+
+If a model fails (429 Rate Limit or 404), the system waits (Backoff Strategy) and retries with the next model in the chain automatically.# DeinContext - German Learning App
 
 An automated flashcard application built with Next.js, Firebase, and Google Gemini AI. Generate German vocabulary cards from English terms with business context examples.
 

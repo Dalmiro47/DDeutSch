@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
 import { VocabCardInput } from '@/types/vocab'
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Plus, Wand2 } from 'lucide-react'
 import { db } from '@/lib/firebase'
 
 export function VocabForm() {
@@ -13,6 +13,8 @@ export function VocabForm() {
   const [cefrLevel, setCefrLevel] = useState<'A1' | 'A2' | 'B1' | 'B2' | 'C1'>('B1')
   const [existingCategories, setExistingCategories] = useState<string[]>([])
   const [isCustomCategory, setIsCustomCategory] = useState(false)
+  const [isManualEntry, setIsManualEntry] = useState(false)
+
   const {
     isLoading,
     isGenerating,
@@ -74,39 +76,70 @@ export function VocabForm() {
     e.preventDefault()
     if (!inputValue.trim()) return
 
+    setIsManualEntry(false)
     const vocabData = await generateData(inputValue, cefrLevel)
     if (!vocabData) {
-      // Error is already set in the hook state
       return
     }
+  }
+
+  const handleManualEntry = () => {
+    resetState()
+    setIsManualEntry(true)
   }
 
   const handleSave = async (editedData: VocabCardInput) => {
     if (!editedData) return
 
-    const savedId = await saveToFirestore(editedData)
+    const savedId = await saveToFirestore(editedData, false)
     if (savedId) {
       setInputValue('')
-      // Reset after a short delay to show success
       setTimeout(() => {
         resetState()
+        setIsManualEntry(false)
       }, 2000)
+    }
+  }
+
+  const handleOverwrite = async () => {
+    if (!generatedData && !isManualEntry) return
+    const dataToSave = generatedData || manualData
+    if (dataToSave) {
+      const savedId = await saveToFirestore(dataToSave, true)
+      if (savedId) {
+        setInputValue('')
+        setTimeout(() => {
+          resetState()
+          setIsManualEntry(false)
+        }, 2000)
+      }
     }
   }
 
   const handleReset = () => {
     setInputValue('')
+    setIsManualEntry(false)
     resetState()
+  }
+
+  const manualData: VocabCardInput = {
+    originalTerm: inputValue,
+    germanTerm: '',
+    article: 'none',
+    plural: '',
+    exampleSentence: '',
+    englishSentence: '',
+    category: 'work',
+    cefrLevel: cefrLevel,
   }
 
   return (
     <div className="w-full max-w-3xl mx-auto p-6 md:p-8 space-y-8">
-      {/* Form Section - Modernized Input */}
       <form onSubmit={handleGenerate} className="space-y-4">
         <div className="space-y-2">
           <label
             htmlFor="english-term"
-            className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1"
+            className="block w-full text-xs font-bold uppercase tracking-wider text-muted-foreground text-center"
           >
             New Term
           </label>
@@ -119,7 +152,7 @@ export function VocabForm() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 disabled={isLoading}
-                className="w-full px-6 py-4 text-lg border border-input rounded-xl bg-background/50 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/40"
+                className="w-full px-6 py-4 text-xs sm:text-sm border border-input rounded-xl bg-background/50 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-xs sm:placeholder:text-sm placeholder:text-muted-foreground/40"
               />
             </div>
 
@@ -137,47 +170,78 @@ export function VocabForm() {
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading || !inputValue.trim()}
-          className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Translating...
-            </>
-          ) : (
-            'Generate Context Card'
-          )}
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            type="submit"
+            disabled={isLoading || !inputValue.trim()}
+            className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Translating...
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-5 h-5" />
+                Generate Card
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleManualEntry}
+            disabled={isLoading}
+            className="flex-1 py-4 bg-card border-2 border-dashed border-border hover:border-primary/50 text-muted-foreground hover:text-foreground rounded-xl font-bold text-lg hover:bg-accent/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-200"
+          >
+            <Plus className="w-5 h-5" />
+            Add Card
+          </button>
+        </div>
       </form>
 
-      {/* Error Display */}
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg flex gap-3">
-          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium text-destructive">Error</p>
-            <p className="text-sm text-destructive/90">{error}</p>
+        <div className={`p-4 rounded-lg flex gap-3 ${error === 'DUPLICATE_CARD' ? 'bg-amber-50 border border-amber-200' : 'bg-destructive/10 border border-destructive/30'}`}>
+          <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${error === 'DUPLICATE_CARD' ? 'text-amber-600' : 'text-destructive'}`} />
+          <div className="flex-1">
+            {error === 'DUPLICATE_CARD' ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-amber-800">Card already exists!</p>
+                  <p className="text-sm text-amber-700">Would you like to overwrite it with this new version?</p>
+                </div>
+                <button
+                  onClick={handleOverwrite}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm whitespace-nowrap"
+                >
+                  Overwrite Card
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p className="font-medium text-destructive">Error</p>
+                <p className="text-sm text-destructive/90">{error}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Generated Data Display */}
-      {generatedData && !savedVocabId && (
+      {(generatedData || isManualEntry) && !savedVocabId && (
         <VocabDataDisplay
-          data={generatedData}
+          key={isManualEntry ? 'manual' : 'generated'}
+          data={generatedData || manualData}
           onSave={handleSave}
           onCancel={handleReset}
           isSaving={isSaving}
           existingCategories={existingCategories}
           isCustomCategory={isCustomCategory}
           setIsCustomCategory={setIsCustomCategory}
+          title={isManualEntry ? 'Create New Card' : 'Generated Data (Editable)'}
         />
       )}
 
-      {/* Success Message */}
       {savedVocabId && (
         <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
           <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
@@ -203,6 +267,7 @@ interface VocabDataDisplayProps {
   existingCategories: string[]
   isCustomCategory: boolean
   setIsCustomCategory: (value: boolean) => void
+  title?: string
 }
 
 function VocabDataDisplay({
@@ -213,6 +278,7 @@ function VocabDataDisplay({
   existingCategories,
   isCustomCategory,
   setIsCustomCategory,
+  title = 'Generated Data (Editable)',
 }: VocabDataDisplayProps) {
   const [editableData, setEditableData] = useState(data)
   const hasExistingCategories = existingCategories.length > 0
@@ -232,13 +298,13 @@ function VocabDataDisplay({
   }
 
   return (
-    <div className="p-6 bg-card border border-border rounded-lg space-y-4">
-      <h2 className="text-xl font-semibold text-foreground">Generated Data (Editable)</h2>
+    <div className="p-6 bg-card border border-border rounded-lg space-y-4 animate-in slide-in-from-top-4 fade-in duration-300">
+      <h2 className="text-xl font-semibold text-foreground">{title}</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-muted-foreground">
-            Original Term
+            Original Term (English)
           </label>
           <input
             type="text"
@@ -356,7 +422,7 @@ function VocabDataDisplay({
 
       <div className="space-y-1 pt-2">
         <label className="text-sm font-medium text-muted-foreground">
-          Example Sentence
+          Example Sentence (German)
         </label>
         <textarea
           value={editableData.exampleSentence}
@@ -367,7 +433,6 @@ function VocabDataDisplay({
         />
       </div>
 
-      {/* NEW: English Sentence Input */}
       <div className="space-y-1">
         <label className="text-sm font-medium text-muted-foreground">
           English Translation

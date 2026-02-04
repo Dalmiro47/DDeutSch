@@ -11,6 +11,7 @@ export interface VocabCard {
   englishSentence: string // <--- NEW FIELD
   category: string
   cefrLevel: CefrLevel // <--- Add this
+  learningStep?: number
   nextReview: Timestamp
   createdAt: Timestamp
 }

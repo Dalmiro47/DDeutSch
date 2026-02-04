@@ -54,9 +54,11 @@ export function useVocabGenerator() {
       }))
 
       try {
+        console.log("Generating data for:", englishTerm, cefrLevel)
         const response = await generateVocabData(englishTerm, cefrLevel)
 
         if (!response.success || !response.data) {
+          console.error("Generation response error:", response)
           const errorMessage =
             response.error?.message || 'Unknown error occurred'
           setState((prev) => ({
@@ -76,6 +78,7 @@ export function useVocabGenerator() {
 
         return response.data
       } catch (error) {
+        console.error("API Error Details:", error)
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to generate vocab'
         setState((prev) => ({
@@ -91,7 +94,7 @@ export function useVocabGenerator() {
   )
 
   const saveToFirestore = useCallback(
-    async (vocabData: VocabCardInput): Promise<string | null> => {
+    async (vocabData: VocabCardInput, allowOverwrite = false): Promise<string | null> => {
       const auth = getAuth()
       const user = auth.currentUser
 
@@ -120,30 +123,23 @@ export function useVocabGenerator() {
         // Reference to the specific document (users/{uid}/vocab/{term})
         const docRef = doc(db, 'users', user.uid, 'vocab', docId)
 
-        // Optimized duplicate check - read single doc instead of querying collection
-        const docSnap = await getDoc(docRef)
+        if (!allowOverwrite) {
+          const docSnap = await getDoc(docRef)
 
-        if (docSnap.exists()) {
-          const errorMessage = `You already have a card for "${vocabData.originalTerm}"!`
-          setState((prev) => ({
-            ...prev,
-            isLoading: false,
-            isSaving: false,
-            error: errorMessage,
-          }))
-          return null
+          if (docSnap.exists()) {
+            throw new Error('DUPLICATE_CARD')
+          }
         }
 
         // Add timestamps
         const now = Timestamp.now()
-        const nextReviewTimestamp = Timestamp.fromDate(
-          new Date(Date.now() + 24 * 60 * 60 * 1000) // +24 hours
-        )
+        const nextReviewTimestamp = now
 
         const finalVocabCard: VocabCard = {
           ...vocabData,
           createdAt: now,
           nextReview: nextReviewTimestamp,
+          learningStep: 0,
         }
 
         // Write with specific document ID using setDoc
@@ -162,6 +158,17 @@ export function useVocabGenerator() {
           error instanceof Error
             ? error.message
             : 'Failed to save vocab to Firestore'
+
+        if (errorMessage === 'DUPLICATE_CARD') {
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            isSaving: false,
+            error: 'DUPLICATE_CARD',
+          }))
+          return null
+        }
+
         setState((prev) => ({
           ...prev,
           isLoading: false,
@@ -187,7 +194,7 @@ export function useVocabGenerator() {
 
   // NEW: Update Function for Editing
   const updateVocabCard = useCallback(
-    async (docId: string, updatedData: Partial<VocabCardInput>) => {
+    async (docId: string, updatedData: Partial<VocabCard>) => {
       const auth = getAuth()
       const user = auth.currentUser
       if (!user) throw new Error('User not authenticated')
