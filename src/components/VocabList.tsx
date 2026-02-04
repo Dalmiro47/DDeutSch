@@ -22,6 +22,24 @@ const getArticleColor = (article: string) => {
   }
 }
 
+const getLevelBadgeColor = (level: string = 'B1') => {
+  if (level === 'A1') return 'bg-green-100 text-green-800'
+  if (level === 'A2') return 'bg-emerald-100 text-emerald-800'
+  if (level === 'B1') return 'bg-blue-100 text-blue-800'
+  if (level === 'B2') return 'bg-purple-100 text-purple-800'
+  if (level === 'C1') return 'bg-rose-100 text-rose-800'
+  return 'bg-gray-100 text-gray-800'
+}
+
+const stripLeadingArticle = (term: string, article: string) => {
+  if (!term || !article || article === 'none') return term
+  const prefix = `${article.toLowerCase()} `
+  if (term.toLowerCase().startsWith(prefix)) {
+    return term.slice(prefix.length)
+  }
+  return term
+}
+
 export function VocabList() {
   const [vocabCards, setVocabCards] = useState<(VocabCard & { id: string })[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -43,7 +61,8 @@ export function VocabList() {
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'work' | 'general'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [cefrFilter, setCefrFilter] = useState<string>('all')
 
   useEffect(() => {
     const auth = getAuth()
@@ -121,6 +140,7 @@ export function VocabList() {
       exampleSentence: card.exampleSentence,
       englishSentence: card.englishSentence || '',
       category: card.category,
+      cefrLevel: card.cefrLevel || 'B1',
     })
   }
 
@@ -144,6 +164,14 @@ export function VocabList() {
     }
   }
 
+  const uniqueCategories = Array.from(
+    new Set(vocabCards.map((card) => card.category || 'general'))
+  ).sort()
+
+  const uniqueLevels = Array.from(
+    new Set(vocabCards.map((card) => card.cefrLevel || 'B1'))
+  ).sort()
+
   const filteredCards = vocabCards.filter((card) => {
     const searchLower = searchTerm.toLowerCase()
     const matchesSearch = 
@@ -151,7 +179,8 @@ export function VocabList() {
       card.germanTerm.toLowerCase().includes(searchLower) ||
       card.exampleSentence.toLowerCase().includes(searchLower)
     const matchesCategory = categoryFilter === 'all' || card.category === categoryFilter
-    return matchesSearch && matchesCategory
+    const matchesCefr = cefrFilter === 'all' || (card.cefrLevel || 'B1') === cefrFilter
+    return matchesSearch && matchesCategory && matchesCefr
   })
 
   const handleCardClick = (id: string) => {
@@ -236,18 +265,38 @@ export function VocabList() {
             />
           </div>
 
-          <div className="relative group min-w-[160px]">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors z-10" />
+          <div className="relative group min-w-[140px]">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
             <select 
               value={categoryFilter} 
-              onChange={(e) => setCategoryFilter(e.target.value as any)}
-              className="w-full pl-10 pr-10 py-3 bg-card border border-input rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm cursor-pointer hover:bg-muted/50 text-foreground"
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full pl-10 pr-8 py-3 bg-card border border-input rounded-xl appearance-none cursor-pointer hover:bg-muted/50"
             >
-              <option value="all">All Categories</option>
-              <option value="work">Work Only</option>
-              <option value="general">General Only</option>
+              <option value="all">All Topics</option>
+              {uniqueCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                </option>
+              ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          </div>
+
+          <div className="relative group min-w-[100px]">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground z-10">Lvl</div>
+            <select 
+              value={cefrFilter} 
+              onChange={(e) => setCefrFilter(e.target.value)}
+              className="w-full pl-10 pr-8 py-3 bg-card border border-input rounded-xl appearance-none cursor-pointer hover:bg-muted/50"
+            >
+              <option value="all">All</option>
+              {uniqueLevels.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           </div>
         </div>
       </div>
@@ -355,7 +404,10 @@ export function VocabList() {
                   </span>
 
                   {(!isStudyMode || isRevealed) && (
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-1">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getLevelBadgeColor(card.cefrLevel)}`}>
+                        {card.cefrLevel || 'B1'}
+                      </span>
                       {/* Buttons always visible for better UX */}
                       <button
                         onClick={(e) => startEditing(e, card)}
@@ -377,6 +429,18 @@ export function VocabList() {
                   )}
                 </div>
 
+                {/* Study Mode Challenge: English Context */}
+                {isStudyMode && !isRevealed && card.englishSentence && (
+                  <div className="mt-6 mb-8 px-4 py-3 bg-muted/30 rounded-lg border border-border/30 text-center animate-in fade-in duration-500">
+                    <p className="text-sm text-muted-foreground italic leading-relaxed">
+                      &quot;{card.englishSentence}&quot;
+                    </p>
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-2 tracking-widest">
+                      Translate to German
+                    </p>
+                  </div>
+                )}
+
                 {/* ANSWER SECTION */}
                 <div className={`transition-all duration-300 ${showAnswer ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 hidden'}`}>
                   
@@ -388,7 +452,7 @@ export function VocabList() {
                         </span>
                       )}
                       <h3 className="text-xl font-bold text-foreground tracking-tight">
-                        {card.germanTerm}
+                        {stripLeadingArticle(card.germanTerm, card.article)}
                       </h3>
                     </div>
                     <button
@@ -403,9 +467,11 @@ export function VocabList() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-muted-foreground/60 text-xs w-10">Plural</span>
-                      <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
-                        die
-                      </span>
+                      {card.article !== 'none' && (
+                        <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
+                          die
+                        </span>
+                      )}
                       <span className="font-medium text-foreground">
                         {formatPlural(card.plural)}
                       </span>
