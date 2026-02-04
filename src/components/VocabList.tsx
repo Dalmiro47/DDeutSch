@@ -41,6 +41,22 @@ const stripLeadingArticle = (term: string, article: string) => {
   return term
 }
 
+const selectNextCardId = (cards: (VocabCard & { id: string })[]) => {
+  const phase1 = cards.filter((card) => (card.learningStep ?? 0) === 0)
+  const phase2 = cards.filter((card) => card.learningStep === 1)
+  const phase3 = cards.filter((card) => card.learningStep === 2)
+
+  let activeDeck: (VocabCard & { id: string })[] = []
+  if (phase1.length > 0) activeDeck = phase1
+  else if (phase2.length > 0) activeDeck = phase2
+  else activeDeck = phase3
+
+  if (activeDeck.length === 0) return null
+
+  const randomIndex = Math.floor(Math.random() * activeDeck.length)
+  return activeDeck[randomIndex].id
+}
+
 export function VocabList() {
   const [vocabCards, setVocabCards] = useState<(VocabCard & { id: string })[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -223,34 +239,13 @@ export function VocabList() {
 
   const visibleCount = isStudyMode ? dueCards.length : filteredCards.length
 
-  const selectNextCardId = (cards: typeof dueCards) => {
-    const phase1 = cards.filter((card) => (card.learningStep ?? 0) === 0)
-    const phase2 = cards.filter((card) => card.learningStep === 1)
-    const phase3 = cards.filter((card) => card.learningStep === 2)
-
-    console.log("Selecting next card from phases:", {
-      phase1: phase1.length,
-      phase2: phase2.length,
-      phase3: phase3.length,
-    })
-
-    let activeDeck: typeof dueCards = []
-    if (phase1.length > 0) activeDeck = phase1
-    else if (phase2.length > 0) activeDeck = phase2
-    else activeDeck = phase3
-
-    if (activeDeck.length === 0) return null
-
-    const randomIndex = Math.floor(Math.random() * activeDeck.length)
-    return activeDeck[randomIndex].id
-  }
-
   useEffect(() => {
     if (isStudyMode && !activeCardId && dueCards.length > 0) {
       const nextId = selectNextCardId(dueCards)
       if (nextId) setActiveCardId(nextId)
     }
-  }, [isStudyMode, activeCardId, dueCards.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStudyMode, activeCardId, dueCards.length, selectNextCardId])
 
   const currentCard = useMemo(() => {
     if (activeCardId === isUpdatingId) return null
@@ -707,7 +702,7 @@ export function VocabList() {
               </div>
               <h3 className="text-2xl font-bold text-green-900 dark:text-green-100 mb-2">Session Complete!</h3>
               <p className="text-green-800 dark:text-green-300 max-w-md mx-auto">
-                You've reviewed all your due cards for now. Great job keeping your streak alive!
+                You&apos;ve reviewed all your due cards for now. Great job keeping your streak alive!
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
                 <button 
