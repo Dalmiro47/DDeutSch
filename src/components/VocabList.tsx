@@ -6,7 +6,7 @@ import { collection, query, onSnapshot, deleteDoc, doc, Timestamp } from 'fireba
 import { getAuth } from 'firebase/auth'
 import { db } from '@/lib/firebase'
 import { VocabCard, VocabCardInput } from '@/types/vocab'
-import { Trash2, Calendar, BookOpen, GraduationCap, Search, Filter, Volume2, ChevronDown, Edit, Check, X, PlusCircle, LogOut, Square } from 'lucide-react'
+import { Trash2, Calendar, BookOpen, GraduationCap, Search, Filter, Volume2, ChevronDown, Edit, Check, X, PlusCircle, LogOut, Square, ArrowRightLeft } from 'lucide-react'
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
 import { calculateNextReview, ReviewDifficulty } from '@/lib/spacedRepetition'
 
@@ -70,6 +70,8 @@ export function VocabList() {
   // Study Mode State
   const [isStudyMode, setIsStudyMode] = useState(false)
   const [revealedCardIds, setRevealedCardIds] = useState<Set<string>>(new Set())
+  const [isStudyMenuOpen, setIsStudyMenuOpen] = useState(false)
+  const [studyDirection, setStudyDirection] = useState<'en-de' | 'de-en' | 'mixed'>('en-de')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [isUpdatingId, setIsUpdatingId] = useState<string | null>(null)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -268,6 +270,13 @@ export function VocabList() {
     return vocabCards.find((card) => card.id === activeCardId) || null
   }, [activeCardId, vocabCards, isUpdatingId])
 
+  const currentCardMode = useMemo(() => {
+    if (studyDirection === 'mixed') {
+      return Math.random() > 0.5 ? 'en-de' : 'de-en'
+    }
+    return studyDirection
+  }, [activeCardId, studyDirection])
+
   const handleCardClick = (id: string) => {
     if (!isStudyMode) return
     if (editingId === id) return 
@@ -290,6 +299,12 @@ export function VocabList() {
     setActiveCardId(null)
     setEditingId(null)
     setHoveredSentenceId(null) // Reset hovers
+  }
+
+  const startStudySession = (direction: 'en-de' | 'de-en' | 'mixed') => {
+    setStudyDirection(direction)
+    setIsStudyMode(true)
+    setIsStudyMenuOpen(false)
   }
 
   const handleRating = async (
@@ -407,27 +422,58 @@ export function VocabList() {
               ({visibleCount}{!isStudyMode && filteredCards.length !== vocabCards.length && ` of ${vocabCards.length}`})
             </span>
           </h2>
-          <div className="flex items-center gap-2 w-full sm:w-auto mt-4 sm:mt-0">
-            <button
-              onClick={toggleStudyMode}
-              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm w-full sm:w-auto ${
-                isStudyMode
-                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                  : 'bg-primary/80 text-primary-foreground hover:bg-primary hover:scale-[1.02] active:scale-[0.98]'
-              }`}
-            >
-              {isStudyMode ? (
-                <>
-                  <LogOut className="w-4 h-4" />
-                  Exit Study Mode
-                </>
-              ) : (
-                <>
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto mt-4 sm:mt-0 relative">
+            {isStudyMode ? (
+              <button
+                onClick={toggleStudyMode}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90 ring-2 ring-destructive ring-offset-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Exit Study Mode
+              </button>
+            ) : (
+              <div className="relative w-full sm:w-auto">
+                <button
+                  onClick={() => setIsStudyMenuOpen(!isStudyMenuOpen)}
+                  className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm w-full sm:w-auto bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]"
+                >
                   <GraduationCap className="w-4 h-4" />
                   Start Study Mode
-                </>
-              )}
-            </button>
+                </button>
+
+                {isStudyMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setIsStudyMenuOpen(false)}
+                    />
+
+                    <div className="absolute right-0 top-full mt-2 w-full sm:w-48 bg-popover border border-border rounded-xl shadow-xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                      <div className="p-1 flex flex-col gap-0.5">
+                        <button
+                          onClick={() => startStudySession('en-de')}
+                          className="w-full text-center justify-center px-3 py-3 text-sm font-bold rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors flex"
+                        >
+                          EN to DE
+                        </button>
+                        <button
+                          onClick={() => startStudySession('de-en')}
+                          className="w-full text-center justify-center px-3 py-3 text-sm font-bold rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors flex"
+                        >
+                          DE to EN
+                        </button>
+                        <button
+                          onClick={() => startStudySession('mixed')}
+                          className="w-full text-center justify-center px-3 py-3 text-sm font-bold rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors flex"
+                        >
+                          Mixed
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -727,6 +773,7 @@ export function VocabList() {
           onReveal={() => handleCardClick(currentCard.id)}
           onRate={(e, difficulty) => handleRating(e, currentCard.id, difficulty)}
           onExit={toggleStudyMode}
+          mode={currentCardMode}
           playingAudioKey={playingAudioKey}
           onPlayAudio={handleAudioControl}
           totalDue={dueCards.length}
@@ -759,6 +806,7 @@ interface StudySessionModalProps {
   onReveal: () => void
   onRate: (e: React.MouseEvent, difficulty: ReviewDifficulty) => void
   onExit: () => void
+  mode: 'en-de' | 'de-en'
   playingAudioKey: string | null
   onPlayAudio: (e: React.MouseEvent, text: string, key: string) => void
   totalDue: number
@@ -773,6 +821,7 @@ function StudySessionModal({
   onReveal,
   onRate,
   onExit,
+  mode,
   playingAudioKey,
   onPlayAudio,
   totalDue,
@@ -782,6 +831,11 @@ function StudySessionModal({
 }: StudySessionModalProps) {
   const [mounted, setMounted] = useState(false)
   const [isSentenceHovered, setIsSentenceHovered] = useState(false)
+  const isEnDe = mode === 'en-de'
+  const questionTerm = isEnDe
+    ? activeCard.originalTerm
+    : stripLeadingArticle(activeCard.germanTerm, activeCard.article)
+  const hintSentence = isEnDe ? activeCard.englishSentence : activeCard.exampleSentence
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -829,48 +883,34 @@ function StudySessionModal({
             `}
           >
             <div className="flex justify-between items-start mb-3">
-              <span className={`
-                font-bold uppercase tracking-wider transition-all duration-300
-                ${!isRevealed ? 'text-lg text-primary mx-auto pt-6 pb-6 scale-110' : 'text-[10px] text-muted-foreground'}
-              `}>
-                {activeCard.originalTerm}
-              </span>
-
-              {isRevealed && (
-                <div className="flex items-center gap-1">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getLevelBadgeColor(activeCard.cefrLevel)}`}>
-                    {activeCard.cefrLevel || 'B1'}
+              <div
+                className={`flex items-center gap-2 transition-all duration-300 ${
+                  !isRevealed ? 'mx-auto pt-6 pb-6 scale-110' : ''
+                }`}
+              >
+                {!isEnDe && activeCard.article !== 'none' && (
+                  <span className={`px-2.5 py-0.5 rounded-md text-sm font-bold border shadow-sm ${getArticleColor(activeCard.article)}`}>
+                    {activeCard.article}
                   </span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-center mb-4">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/70 border border-border/60 rounded-full px-2 py-0.5">
-                {roundLabel}
-              </span>
-            </div>
-
-            {!isRevealed && activeCard.englishSentence && (
-              <div className="mt-6 mb-8 px-4 py-3 bg-muted/30 rounded-lg border border-border/30 text-center animate-in fade-in duration-500">
-                <p className="text-sm text-muted-foreground italic leading-relaxed">
-                  &quot;{activeCard.englishSentence}&quot;
-                </p>
+                )}
+                <span
+                  className={`font-bold transition-all duration-300 ${
+                    isEnDe ? 'uppercase tracking-wider' : 'tracking-tight'
+                  } ${!isRevealed ? 'text-lg text-primary' : 'text-[10px] text-muted-foreground'}`}
+                >
+                  {questionTerm}
+                </span>
               </div>
-            )}
 
-            <div className={`transition-all duration-300 ${isRevealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 hidden'}`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  {activeCard.article !== 'none' && (
-                    <span className={`px-2.5 py-0.5 rounded-md text-sm font-bold border shadow-sm ${getArticleColor(activeCard.article)}`}>
-                      {activeCard.article}
+              {isEnDe ? (
+                isRevealed && (
+                  <div className="flex items-center gap-1">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getLevelBadgeColor(activeCard.cefrLevel)}`}>
+                      {activeCard.cefrLevel || 'B1'}
                     </span>
-                  )}
-                  <h3 className="text-xl font-bold text-foreground tracking-tight">
-                    {stripLeadingArticle(activeCard.germanTerm, activeCard.article)}
-                  </h3>
-                </div>
+                  </div>
+                )
+              ) : (
                 <button
                   onClick={(e) =>
                     onPlayAudio(
@@ -892,83 +932,146 @@ function StudySessionModal({
                     <Volume2 className="w-4 h-4" />
                   )}
                 </button>
+              )}
+            </div>
+
+            <div className="flex justify-center mb-4">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground/70 border border-border/60 rounded-full px-2 py-0.5">
+                {roundLabel}
+              </span>
+            </div>
+
+            {!isRevealed && hintSentence && (
+              <div className="mt-6 mb-8 px-4 py-3 bg-muted/30 rounded-lg border border-border/30 text-center animate-in fade-in duration-500">
+                <p className="text-sm text-muted-foreground italic leading-relaxed">
+                  &quot;{hintSentence}&quot;
+                </p>
               </div>
+            )}
 
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground/60 text-xs w-10">Plural</span>
-                  {activeCard.article !== 'none' && (
-                    <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
-                      die
-                    </span>
-                  )}
-                  <span className="font-medium text-foreground">
-                    {formatPlural(activeCard.plural)}
-                  </span>
-                </div>
-
-                <div
-                  className="relative bg-muted/50 p-4 rounded-lg border border-border/50"
-                  onMouseEnter={() => setIsSentenceHovered(true)}
-                  onMouseLeave={() => setIsSentenceHovered(false)}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsSentenceHovered((prev) => !prev)
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4 pointer-events-none min-h-[100px]">
-                      &quot;{activeCard.exampleSentence}&quot;
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                      <button
-                        onClick={(e) => onPlayAudio(e, activeCard.exampleSentence, `${activeCard.id}-sentence`)}
-                        className={`transition-all p-1 ${
-                          playingAudioKey === `${activeCard.id}-sentence`
-                            ? 'text-red-500 hover:text-red-600 scale-110'
-                            : 'text-muted-foreground/50 hover:text-primary hover:scale-110'
-                        }`}
-                        title={playingAudioKey === `${activeCard.id}-sentence` ? 'Stop' : 'Listen to sentence'}
-                      >
-                        {playingAudioKey === `${activeCard.id}-sentence` ? (
-                          <Square className="w-4 h-4 fill-current" />
-                        ) : (
-                          <Volume2 className="w-4 h-4" />
-                        )}
-                      </button>
+            <div className={`transition-all duration-300 ${isRevealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 hidden'}`}>
+              {isEnDe ? (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {activeCard.article !== 'none' && (
+                        <span className={`px-2.5 py-0.5 rounded-md text-sm font-bold border shadow-sm ${getArticleColor(activeCard.article)}`}>
+                          {activeCard.article}
+                        </span>
+                      )}
+                      <h3 className="text-xl font-bold text-foreground tracking-tight">
+                        {stripLeadingArticle(activeCard.germanTerm, activeCard.article)}
+                      </h3>
                     </div>
+                    <button
+                      onClick={(e) =>
+                        onPlayAudio(
+                          e,
+                          `${activeCard.article !== 'none' ? activeCard.article : ''} ${activeCard.germanTerm}`,
+                          `${activeCard.id}-term`
+                        )
+                      }
+                      className={`p-1.5 rounded-full transition-all active:scale-95 ${
+                        playingAudioKey === `${activeCard.id}-term`
+                          ? 'bg-red-100 text-red-600 hover:bg-red-200 animate-pulse'
+                          : 'bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110'
+                      }`}
+                      title={playingAudioKey === `${activeCard.id}-term` ? 'Stop' : 'Listen'}
+                    >
+                      {playingAudioKey === `${activeCard.id}-term` ? (
+                        <Square className="w-4 h-4 fill-current" />
+                      ) : (
+                        <Volume2 className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
 
-                  {isSentenceHovered && (
-                    <div className="absolute left-0 -top-2 -translate-y-full w-full z-50 px-2 pb-2 animate-in fade-in zoom-in-95 duration-150">
-                      <div className="bg-popover text-popover-foreground text-xs p-3 rounded-md shadow-xl border border-border/50 backdrop-blur-md relative">
-                        <div className="absolute bottom-0 left-6 translate-y-1/2 rotate-45 w-2 h-2 bg-popover border-r border-b border-border/50"></div>
-                        {activeCard.englishSentence || 'No translation available for this card.'}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground/60 text-xs w-10">Plural</span>
+                      {activeCard.article !== 'none' && (
+                        <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
+                          die
+                        </span>
+                      )}
+                      <span className="font-medium text-foreground">
+                        {formatPlural(activeCard.plural)}
+                      </span>
+                    </div>
+
+                    <div
+                      className="relative bg-muted/50 p-4 rounded-lg border border-border/50"
+                      onMouseEnter={() => setIsSentenceHovered(true)}
+                      onMouseLeave={() => setIsSentenceHovered(false)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setIsSentenceHovered((prev) => !prev)
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm italic text-foreground/80 leading-relaxed underline decoration-dotted decoration-primary/30 underline-offset-4 pointer-events-none min-h-[100px]">
+                          &quot;{activeCard.exampleSentence}&quot;
+                        </p>
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                          <button
+                            onClick={(e) => onPlayAudio(e, activeCard.exampleSentence, `${activeCard.id}-sentence`)}
+                            className={`transition-all p-1 ${
+                              playingAudioKey === `${activeCard.id}-sentence`
+                                ? 'text-red-500 hover:text-red-600 scale-110'
+                                : 'text-muted-foreground/50 hover:text-primary hover:scale-110'
+                            }`}
+                            title={playingAudioKey === `${activeCard.id}-sentence` ? 'Stop' : 'Listen to sentence'}
+                          >
+                            {playingAudioKey === `${activeCard.id}-sentence` ? (
+                              <Square className="w-4 h-4 fill-current" />
+                            ) : (
+                              <Volume2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
                       </div>
+
+                      {isSentenceHovered && (
+                        <div className="absolute left-0 -top-2 -translate-y-full w-full z-50 px-2 pb-2 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="bg-popover text-popover-foreground text-xs p-3 rounded-md shadow-xl border border-border/50 backdrop-blur-md relative">
+                            <div className="absolute bottom-0 left-6 translate-y-1/2 rotate-45 w-2 h-2 bg-popover border-r border-b border-border/50"></div>
+                            {activeCard.englishSentence || 'No translation available for this card.'}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="pt-2 flex items-center justify-between text-[10px] text-muted-foreground/60 border-t border-border/40">
-                  <div className="flex items-center">
-                    <Calendar className="w-3 h-3 mr-1.5" />
-                    {new Date(activeCard.createdAt.toDate()).toLocaleDateString()}
+                    <div className="pt-2 flex items-center justify-between text-[10px] text-muted-foreground/60 border-t border-border/40">
+                      <div className="flex items-center">
+                        <Calendar className="w-3 h-3 mr-1.5" />
+                        {new Date(activeCard.createdAt.toDate()).toLocaleDateString()}
+                      </div>
+                      <span className="uppercase tracking-wider opacity-70 border border-border rounded px-1.5 py-0.5">
+                        {activeCard.category}
+                      </span>
+                    </div>
+
+                    {(activeCard.learningStep ?? 0) >= 1 && (
+                      <button
+                        onClick={onSkipLoop}
+                        disabled={isUpdatingId === activeCard.id}
+                        className="w-full py-2 bg-secondary/50 hover:bg-secondary text-xs font-bold uppercase rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        Finish Loop Early (Keep Good (3d))
+                      </button>
+                    )}
                   </div>
-                  <span className="uppercase tracking-wider opacity-70 border border-border rounded px-1.5 py-0.5">
-                    {activeCard.category}
-                  </span>
+                </>
+              ) : (
+                <div className="space-y-4 text-center">
+                  <h3 className="text-2xl font-bold text-foreground tracking-tight">
+                    {activeCard.originalTerm}
+                  </h3>
+                  <p className="text-sm text-muted-foreground italic leading-relaxed">
+                    &quot;{activeCard.englishSentence || 'No translation available for this card.'}&quot;
+                  </p>
                 </div>
-
-                {(activeCard.learningStep ?? 0) >= 1 && (
-                  <button
-                    onClick={onSkipLoop}
-                    disabled={isUpdatingId === activeCard.id}
-                    className="w-full py-2 bg-secondary/50 hover:bg-secondary text-xs font-bold uppercase rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Finish Loop Early (Keep Good (3d))
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
             {!isRevealed && (
@@ -986,38 +1089,40 @@ function StudySessionModal({
         </div>
       </div>
 
-      <div className="border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-        <div className="grid grid-cols-4 gap-2 max-w-2xl mx-auto">
-          <button
-            onClick={(e) => onRate(e, 'very_hard')}
-            disabled={isUpdatingId === activeCard.id}
-            className="px-1 py-3 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors disabled:opacity-50"
-          >
-            Again (Reset)
-          </button>
-          <button
-            onClick={(e) => onRate(e, 'hard')}
-            disabled={isUpdatingId === activeCard.id}
-            className="px-1 py-3 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-200 transition-colors disabled:opacity-50"
-          >
-            Hard (1d)
-          </button>
-          <button
-            onClick={(e) => onRate(e, 'medium')}
-            disabled={isUpdatingId === activeCard.id}
-            className="px-1 py-3 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-amber-200 transition-colors disabled:opacity-50"
-          >
-            Good (3d)
-          </button>
-          <button
-            onClick={(e) => onRate(e, 'easy')}
-            disabled={isUpdatingId === activeCard.id}
-            className="px-1 py-3 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-green-200 transition-colors disabled:opacity-50"
-          >
-            Easy (7d)
-          </button>
+      {isRevealed && (
+        <div className="border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] animate-in slide-in-from-bottom-4 duration-300">
+          <div className="grid grid-cols-4 gap-2 max-w-2xl mx-auto">
+            <button
+              onClick={(e) => onRate(e, 'very_hard')}
+              disabled={isUpdatingId === activeCard.id}
+              className="px-1 py-3 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors disabled:opacity-50"
+            >
+              Again (Reset)
+            </button>
+            <button
+              onClick={(e) => onRate(e, 'hard')}
+              disabled={isUpdatingId === activeCard.id}
+              className="px-1 py-3 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-200 transition-colors disabled:opacity-50"
+            >
+              Hard (1d)
+            </button>
+            <button
+              onClick={(e) => onRate(e, 'medium')}
+              disabled={isUpdatingId === activeCard.id}
+              className="px-1 py-3 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-amber-200 transition-colors disabled:opacity-50"
+            >
+              Good (3d)
+            </button>
+            <button
+              onClick={(e) => onRate(e, 'easy')}
+              disabled={isUpdatingId === activeCard.id}
+              className="px-1 py-3 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-green-200 transition-colors disabled:opacity-50"
+            >
+              Easy (7d)
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   , document.body)
 }
