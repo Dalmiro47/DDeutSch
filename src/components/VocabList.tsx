@@ -397,7 +397,7 @@ export function VocabList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative z-0">
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h2 className="text-2xl font-bold text-foreground">
@@ -410,10 +410,10 @@ export function VocabList() {
           <div className="flex items-center gap-2">
             <button
               onClick={toggleStudyMode}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-full font-medium transition-all duration-300 ${
-                isStudyMode 
-                  ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary ring-offset-2' 
-                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm ${
+                isStudyMode
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : 'bg-primary/80 text-primary-foreground hover:bg-primary hover:scale-[1.02] active:scale-[0.98]'
               }`}
             >
               {isStudyMode ? (
@@ -735,9 +735,6 @@ export function VocabList() {
           totalDue={dueCards.length}
           isUpdatingId={isUpdatingId}
           onSkipLoop={(e) => handleSkipLoop(e, currentCard.id)}
-          onEdit={(e) => startEditing(e, currentCard)}
-          onDelete={(e) => handleDelete(e, currentCard.id)}
-          deletingId={deletingId}
           roundLabel={getRoundLabel(currentCard)}
         />
       )}
@@ -770,9 +767,6 @@ interface StudySessionModalProps {
   totalDue: number
   isUpdatingId: string | null
   onSkipLoop: (e: React.MouseEvent) => void
-  onEdit: (e: React.MouseEvent) => void
-  onDelete: (e: React.MouseEvent) => void
-  deletingId: string | null
   roundLabel: string
 }
 
@@ -787,9 +781,6 @@ function StudySessionModal({
   totalDue,
   isUpdatingId,
   onSkipLoop,
-  onEdit,
-  onDelete,
-  deletingId,
   roundLabel,
 }: StudySessionModalProps) {
   const [isSentenceHovered, setIsSentenceHovered] = useState(false)
@@ -801,8 +792,12 @@ function StudySessionModal({
     }
   }, [])
 
+  useEffect(() => {
+    setIsSentenceHovered(false)
+  }, [activeCard.id])
+
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed inset-0 z-[100] bg-background/100 flex flex-col">
       <div className="p-4 border-b border-border/60">
         <div className="w-full max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -844,21 +839,6 @@ function StudySessionModal({
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getLevelBadgeColor(activeCard.cefrLevel)}`}>
                     {activeCard.cefrLevel || 'B1'}
                   </span>
-                  <button
-                    onClick={onEdit}
-                    className="p-1.5 hover:bg-primary/10 rounded-md text-muted-foreground hover:text-primary transition-all"
-                    title="Edit Card"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={onDelete}
-                    disabled={deletingId === activeCard.id}
-                    className="p-1.5 hover:bg-destructive/10 rounded-md text-muted-foreground hover:text-destructive transition-all"
-                    title="Delete Card"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
               )}
             </div>
@@ -1052,7 +1032,7 @@ function SessionCompleteModal({ onExit }: SessionCompleteModalProps) {
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-[9999] bg-background/100 flex items-center justify-center p-6">
       <div className="text-center py-16 px-6 bg-green-50/50 dark:bg-green-950/20 rounded-2xl border border-green-100 dark:border-green-900/50 max-w-xl w-full">
         <div className="w-16 h-16 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
           <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -1117,7 +1097,7 @@ function EditVocabDialog({
   }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="bg-card border border-border text-card-foreground rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
