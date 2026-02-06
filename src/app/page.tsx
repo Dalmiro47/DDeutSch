@@ -75,31 +75,28 @@ export default function Home() {
   return (
     <main className="min-h-screen py-8 px-4 bg-slate-50 dark:bg-background">
       <div className="max-w-4xl mx-auto space-y-8">
-        {/* Modern Header with Real Flag Image */}
-        <header className="flex items-center justify-between gap-4 flex-wrap p-6 bg-card rounded-2xl shadow-sm border border-border/50">
-          <div className="flex items-center gap-4">
-            {/* 1. Real Image instead of Emoji (Guaranteed to work on Windows) */}
-            <div className="relative h-12 w-12 shadow-sm rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-700">
+        <header className="sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/60 border-b border-border/50 sm:static sm:p-6 sm:rounded-2xl sm:shadow-sm sm:border sm:bg-card">
+          <div className="flex items-center gap-3">
+            <div className="relative h-10 w-10 sm:h-12 sm:w-12 shadow-sm rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-700 flex-shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src="https://flagcdn.com/de.svg" 
-                alt="German Flag" 
+              <img
+                src="https://flagcdn.com/de.svg"
+                alt="German Flag"
                 className="object-cover w-full h-full"
               />
             </div>
-            
+
             <div>
-              {/* 2. Clean Title (Removed the redundant emoji) */}
-              <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+              <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
                 DDeutSch
               </h1>
-              <p className="text-sm text-muted-foreground font-medium">
+              <p className="text-xs text-muted-foreground font-medium hidden sm:block">
                 Business German Builder
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-sm font-semibold text-foreground">
                 {user?.displayName?.split(' ')[0] || 'User'}
