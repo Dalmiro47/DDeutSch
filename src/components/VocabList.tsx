@@ -6,7 +6,7 @@ import { collection, query, onSnapshot, deleteDoc, doc, Timestamp } from 'fireba
 import { getAuth } from 'firebase/auth'
 import { db } from '@/lib/firebase'
 import { VocabCard, VocabCardInput } from '@/types/vocab'
-import { Trash2, Calendar, BookOpen, GraduationCap, Search, Filter, Volume2, ChevronDown, Edit, Check, X, PlusCircle, LogOut, Square, ArrowRightLeft } from 'lucide-react'
+import { Trash2, Calendar, BookOpen, GraduationCap, Search, Filter, Volume2, ChevronDown, Edit, Check, X, PlusCircle, LogOut, Square } from 'lucide-react'
 import { useVocabGenerator } from '@/hooks/useVocabGenerator'
 import { calculateNextReview, ReviewDifficulty } from '@/lib/spacedRepetition'
 
@@ -275,6 +275,8 @@ export function VocabList() {
       return Math.random() > 0.5 ? 'en-de' : 'de-en'
     }
     return studyDirection
+    // We intentionally depend on activeCardId to re-roll randomness on card change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCardId, studyDirection])
 
   const handleCardClick = (id: string) => {
