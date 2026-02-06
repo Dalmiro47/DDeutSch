@@ -549,9 +549,6 @@ export function VocabList() {
                     <p className="text-sm text-muted-foreground italic leading-relaxed">
                       &quot;{card.englishSentence}&quot;
                     </p>
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-2 tracking-widest">
-                      Translate to German
-                    </p>
                   </div>
                 )}
 
@@ -858,9 +855,6 @@ function StudySessionModal({
               <div className="mt-6 mb-8 px-4 py-3 bg-muted/30 rounded-lg border border-border/30 text-center animate-in fade-in duration-500">
                 <p className="text-sm text-muted-foreground italic leading-relaxed">
                   &quot;{activeCard.englishSentence}&quot;
-                </p>
-                <p className="text-[10px] uppercase font-bold text-muted-foreground/40 mt-2 tracking-widest">
-                  Translate to German
                 </p>
               </div>
             )}
