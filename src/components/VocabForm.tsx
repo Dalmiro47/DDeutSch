@@ -159,7 +159,7 @@ export function VocabForm() {
             <select
               value={cefrLevel}
               onChange={(e) => setCefrLevel(e.target.value as any)}
-              className="px-4 py-4 border border-input rounded-xl bg-background/50 font-bold text-muted-foreground focus:ring-2 focus:ring-primary/20"
+              className="w-full sm:w-auto px-4 py-4 border border-input rounded-xl bg-background/50 font-bold text-muted-foreground text-center [text-align-last:center] sm:text-left sm:[text-align-last:auto] focus:ring-2 focus:ring-primary/20"
             >
               <option value="A1">A1</option>
               <option value="A2">A2</option>
