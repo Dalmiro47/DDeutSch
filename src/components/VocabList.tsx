@@ -715,7 +715,7 @@ export function VocabList() {
                       window.scrollTo({ top: 0, behavior: 'smooth' })
                     }
                   }}
-                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold transition-all shadow-lg shadow-green-600/20 flex items-center gap-2"
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-bold transition-all shadow-lg shadow-green-600/20 flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="w-4 h-4" />
                   Generate New Term
@@ -1008,7 +1008,7 @@ function EditVocabDialog({
         className="bg-card border border-border text-card-foreground rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
+        <div className="p-6 border-b border-border flex justify-between items-center sticky top-0 bg-card z-20">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Edit className="w-5 h-5 text-primary" />
             Edit Card
@@ -1018,7 +1018,7 @@ function EditVocabDialog({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 pb-24">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase text-muted-foreground">English Term</label>
@@ -1148,7 +1148,7 @@ function EditVocabDialog({
           </div>
         </div>
 
-        <div className="p-6 border-t border-border bg-muted/20 flex gap-3 sticky bottom-0">
+        <div className="p-6 border-t border-border bg-card flex gap-3 sticky bottom-0 z-20">
           <button
             onClick={onSave}
             className="flex-1 bg-primary text-primary-foreground font-bold py-3 rounded-xl hover:bg-primary/90 flex items-center justify-center gap-2 transition-all"
