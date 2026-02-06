@@ -284,6 +284,7 @@ export function VocabList() {
     e.stopPropagation()
     setIsUpdatingId(cardId)
     setActiveCardId(null)
+    const scrollY = typeof window !== 'undefined' ? window.scrollY : null
 
     const card = vocabCards.find((item) => item.id === cardId)
     if (!card) return
@@ -323,6 +324,11 @@ export function VocabList() {
     } finally {
       setTimeout(() => {
         setIsUpdatingId(null)
+        if (scrollY !== null) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: scrollY })
+          })
+        }
       }, 500)
     }
   }
@@ -337,6 +343,7 @@ export function VocabList() {
     e.stopPropagation()
     setIsUpdatingId(cardId)
     setActiveCardId(null)
+    const scrollY = typeof window !== 'undefined' ? window.scrollY : null
     try {
       const nextReview = calculateNextReview('medium')
       await updateVocabCard(cardId, { nextReview, learningStep: null as any })
@@ -352,6 +359,11 @@ export function VocabList() {
     } finally {
       setTimeout(() => {
         setIsUpdatingId(null)
+        if (scrollY !== null) {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: scrollY })
+          })
+        }
       }, 500)
     }
   }
@@ -475,7 +487,7 @@ export function VocabList() {
                   onClick={() => handleCardClick(card.id)}
                   className={`
                     group relative p-5 border rounded-xl bg-card transition-all duration-300
-                    ${isStudyMode ? 'cursor-pointer hover:shadow-lg active:scale-95' : 'hover:-translate-y-0.5'}
+                    ${isStudyMode ? 'cursor-pointer hover:shadow-lg active:scale-95 pb-32' : 'hover:-translate-y-0.5'}
                     ${isStudyMode && !revealedCardIds.has(card.id) ? 'border-dashed border-primary/30 bg-primary/5' : 'border-border'}
                   `}
                 >
@@ -643,7 +655,7 @@ export function VocabList() {
                       )}
 
                       {isStudyMode && (
-                        <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-border/50 animate-in slide-in-from-top-2">
+                        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border/50 z-50 grid grid-cols-4 gap-2 md:static md:p-0 md:bg-transparent md:backdrop-blur-0 md:z-auto md:mt-4 md:pt-3 md:animate-in md:slide-in-from-top-2">
                           <button
                             onClick={(e) => {
                               handleRating(e, card.id, 'very_hard')
@@ -1001,6 +1013,13 @@ function EditVocabDialog({
   const [isCustomCategory, setIsCustomCategory] = useState(
     !uniqueCategories.includes(form.category) && uniqueCategories.length > 0
   )
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
