@@ -408,10 +408,10 @@ export function VocabList() {
             </span>
           </h2>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto mt-4 sm:mt-0">
             <button
               onClick={toggleStudyMode}
-              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm ${
+              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm w-full sm:w-auto ${
                 isStudyMode
                   ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                   : 'bg-primary/80 text-primary-foreground hover:bg-primary hover:scale-[1.02] active:scale-[0.98]'
@@ -785,6 +785,7 @@ function StudySessionModal({
   roundLabel,
 }: StudySessionModalProps) {
   const [mounted, setMounted] = useState(false)
+  const [isInteractionReady, setIsInteractionReady] = useState(false)
   const [isSentenceHovered, setIsSentenceHovered] = useState(false)
 
   useEffect(() => {
@@ -796,6 +797,12 @@ function StudySessionModal({
 
   useEffect(() => {
     setIsSentenceHovered(false)
+    setIsInteractionReady(false)
+
+    if (isRevealed) {
+      const timer = setTimeout(() => setIsInteractionReady(true), 500)
+      return () => clearTimeout(timer)
+    }
   }, [activeCard.id, isRevealed])
 
   useEffect(() => {
@@ -922,6 +929,7 @@ function StudySessionModal({
                   onMouseLeave={() => setIsSentenceHovered(false)}
                   onClick={(e) => {
                     e.stopPropagation()
+                    if (!isInteractionReady) return
                     setIsSentenceHovered((prev) => !prev)
                   }}
                 >
