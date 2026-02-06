@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { collection, query, onSnapshot, deleteDoc, doc, Timestamp } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { db } from '@/lib/firebase'
@@ -397,7 +398,7 @@ export function VocabList() {
   }
 
   return (
-    <div className="space-y-6 relative z-0">
+    <div className="space-y-6">
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h2 className="text-2xl font-bold text-foreground">
@@ -783,6 +784,7 @@ function StudySessionModal({
   onSkipLoop,
   roundLabel,
 }: StudySessionModalProps) {
+  const [mounted, setMounted] = useState(false)
   const [isSentenceHovered, setIsSentenceHovered] = useState(false)
 
   useEffect(() => {
@@ -794,10 +796,16 @@ function StudySessionModal({
 
   useEffect(() => {
     setIsSentenceHovered(false)
-  }, [activeCard.id])
+  }, [activeCard.id, isRevealed])
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-background/100 flex flex-col">
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-background/100 flex flex-col">
       <div className="p-4 border-b border-border/60">
         <div className="w-full max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1016,7 +1024,7 @@ function StudySessionModal({
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
 
 interface SessionCompleteModalProps {
@@ -1024,6 +1032,8 @@ interface SessionCompleteModalProps {
 }
 
 function SessionCompleteModal({ onExit }: SessionCompleteModalProps) {
+  const [mounted, setMounted] = useState(false)
+
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => {
@@ -1031,8 +1041,14 @@ function SessionCompleteModal({ onExit }: SessionCompleteModalProps) {
     }
   }, [])
 
-  return (
-    <div className="fixed inset-0 z-[9999] bg-background/100 flex items-center justify-center p-6">
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] bg-background/100 flex items-center justify-center p-6">
       <div className="text-center py-16 px-6 bg-green-50/50 dark:bg-green-950/20 rounded-2xl border border-green-100 dark:border-green-900/50 max-w-xl w-full">
         <div className="w-16 h-16 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
           <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -1067,7 +1083,7 @@ function SessionCompleteModal({ onExit }: SessionCompleteModalProps) {
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
 
 interface EditVocabDialogProps {
