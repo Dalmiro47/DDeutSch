@@ -407,7 +407,6 @@ export function VocabList() {
               ({visibleCount}{!isStudyMode && filteredCards.length !== vocabCards.length && ` of ${vocabCards.length}`})
             </span>
           </h2>
-          
           <div className="flex items-center gap-2 w-full sm:w-auto mt-4 sm:mt-0">
             <button
               onClick={toggleStudyMode}
@@ -785,7 +784,6 @@ function StudySessionModal({
   roundLabel,
 }: StudySessionModalProps) {
   const [mounted, setMounted] = useState(false)
-  const [isInteractionReady, setIsInteractionReady] = useState(false)
   const [isSentenceHovered, setIsSentenceHovered] = useState(false)
 
   useEffect(() => {
@@ -796,21 +794,7 @@ function StudySessionModal({
   }, [])
 
   useEffect(() => {
-    // 1. Always reset states on card flip
     setIsSentenceHovered(false)
-    setIsInteractionReady(false)
-
-    let timer: NodeJS.Timeout | undefined
-
-    // 2. Start timer only if revealed
-    if (isRevealed) {
-      timer = setTimeout(() => setIsInteractionReady(true), 500)
-    }
-
-    // 3. Always return a cleanup function (fixes TypeScript error)
-    return () => {
-      if (timer) clearTimeout(timer)
-    }
   }, [activeCard.id, isRevealed])
 
   useEffect(() => {
@@ -842,10 +826,8 @@ function StudySessionModal({
       <div className="flex-1 overflow-y-auto p-6">
         <div className="min-h-full flex items-center justify-center">
           <div
-            onClick={onReveal}
             className={`
               w-full max-w-2xl group relative p-6 border rounded-2xl bg-card transition-all duration-300
-              cursor-pointer hover:shadow-lg active:scale-[0.99]
               ${!isRevealed ? 'border-dashed border-primary/40 bg-primary/5' : 'border-border'}
             `}
           >
@@ -937,7 +919,6 @@ function StudySessionModal({
                   onMouseLeave={() => setIsSentenceHovered(false)}
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!isInteractionReady) return
                     setIsSentenceHovered((prev) => !prev)
                   }}
                 >
@@ -997,11 +978,15 @@ function StudySessionModal({
             </div>
 
             {!isRevealed && (
-              <div className="absolute inset-x-0 bottom-4 text-center">
-                <span className="text-xs font-medium text-primary/60 animate-pulse">
-                  Tap to reveal
-                </span>
-              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onReveal()
+                }}
+                className="absolute inset-x-0 bottom-0 py-6 bg-secondary/50 hover:bg-secondary text-secondary-foreground font-bold uppercase tracking-widest transition-all border-t border-border/50 rounded-b-2xl active:bg-secondary/80 flex items-center justify-center gap-2 group"
+              >
+                <span className="group-hover:scale-110 transition-transform">Tap here to reveal</span>
+              </button>
             )}
           </div>
         </div>

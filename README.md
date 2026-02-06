@@ -1,6 +1,6 @@
 # DDeutSch - AI-Powered Business German Trainer 🇩🇪
 
-**DDeutSch** is a specialized vocabulary builder designed for professionals learning German. Unlike generic flashcard apps, it uses **Generative AI (Gemini)** to create context-aware vocabulary cards complete with articles, plurals, and business-oriented example sentences.
+**DDeutSch** is a specialized vocabulary builder designed for professionals learning German. Unlike generic flashcard apps, it uses **Generative AI** to create context-aware vocabulary cards complete with articles, plurals, and business-oriented example sentences.
 
 It features a custom **Spaced Repetition System (SRS)** with a unique "Phase-Locked" study mode to ensure deep retention.
 
@@ -65,4 +65,4 @@ Create a `.env.local` file:
 - **Rate**:
   - **Again**: Resets card to Round 1 (Immediate review).
   - **Good/Hard**: Advances card to next Round.
-  - **Easy**: Graduates card to long-term SRS (days/weeks).# DDeutSch
+  - **Easy**: Graduates card to long-term SRS (days/weeks).# DDeutSc
