@@ -796,12 +796,20 @@ function StudySessionModal({
   }, [])
 
   useEffect(() => {
+    // 1. Always reset states on card flip
     setIsSentenceHovered(false)
     setIsInteractionReady(false)
 
+    let timer: NodeJS.Timeout | undefined
+
+    // 2. Start timer only if revealed
     if (isRevealed) {
-      const timer = setTimeout(() => setIsInteractionReady(true), 500)
-      return () => clearTimeout(timer)
+      timer = setTimeout(() => setIsInteractionReady(true), 500)
+    }
+
+    // 3. Always return a cleanup function (fixes TypeScript error)
+    return () => {
+      if (timer) clearTimeout(timer)
     }
   }, [activeCard.id, isRevealed])
 
